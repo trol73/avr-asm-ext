@@ -1,0 +1,58 @@
+<?xml version="1.0"?>
+
+<project name="avr-asm-ext" default="build" basedir=".">
+
+	<property name="src.dir" value="${basedir}/src" />
+	<property name="temp.dir" value="${basedir}/build" />
+	<property name="distr.dir" value="${basedir}/dist" />
+	
+	
+	<buildnumber file="build.num" />
+
+	<target name="prepare">
+		<delete dir="${temp.dir}" />
+		<mkdir dir="${temp.dir}" />
+		<delete dir="${distr.dir}" />
+		<mkdir dir="${distr.dir}" />
+		<!--	
+		<copy todir="${temp.dir}">
+			<fileset dir="${src.dir}" includes="**/*.png" />
+		</copy>
+		-->		
+
+	</target>
+
+	<target name="compile" depends="prepare" description="Compiles all Java classes">
+		<javac srcdir="${src.dir}" destdir="${temp.dir}" debug="on" optimize="off" deprecation="off" encoding="utf-8">
+		</javac>
+	</target>
+
+	<target name="jar" depends="compile">
+		<tstamp>
+			<format property="TODAY" pattern="dd-MM-yyyy HH:mm:ss" />
+		</tstamp>
+		<jar destfile="${distr.dir}/avr-asm-ext.jar">
+			<fileset dir="${temp.dir}">
+				<include name="**/*" />
+			</fileset>
+			<manifest>
+				<attribute name="Main-Class" value="ru.trolsoft.asmext.Main" />
+				<attribute name="Class-Path" value="." />
+				<attribute name="Implementation-Version" value="${version.num}.${build.number}" />
+				<attribute name="Built-Date" value="${TODAY}" />
+			</manifest>
+		</jar>
+	</target>
+
+
+	<target name="clean" description="clean up">
+		<delete dir="${temp.dir1}" />
+	</target>
+
+
+
+	<target name="build" depends="jar">
+		<delete dir="${temp.dir}" />
+	</target>
+
+</project>
