@@ -29,8 +29,10 @@ public class Main {
             }
         } catch (IOException e1) {
             System.out.println(e1.getMessage());
+            System.exit(1);
         } catch (SyntaxException e2) {
-            System.out.println("ERROR: " + src + ":" + e2.line + " " + e2.getMessage());
+            System.out.println(src + ":" + e2.line + ": Error: " + e2.getMessage());
+            System.exit(1);
         }
     }
 }

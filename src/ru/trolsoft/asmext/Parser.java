@@ -10,20 +10,21 @@ public class Parser {
     private Proc currentProc;
     private int lineNumber;
     private List<String> output = new ArrayList<>();
+    private final Compiler compiler = new Compiler();
 
 
-    public Parser() {
+    Parser() {
 
     }
 
 
-    public void parse(File file) throws IOException, SyntaxException {
+    void parse(File file) throws IOException, SyntaxException {
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
             parse(reader);
         }
     }
 
-    public void parse(BufferedReader reader) throws IOException, SyntaxException {
+    private void parse(BufferedReader reader) throws IOException, SyntaxException {
         while (true) {
             String line = reader.readLine();
             if (line == null) {
@@ -47,6 +48,8 @@ public class Parser {
         } else if (checkDirective(trimLine, ".endproc")) {
             endProc(trimLine.substring(".endproc".length()).trim());
             output.add(";" + line);
+        } else if (trimLine.startsWith("@") && currentProc != null) {
+            localLabel(trimLine.substring(1).trim());
         } else {
             processLine(line);
         }
@@ -54,18 +57,57 @@ public class Parser {
 
     }
 
+    private void localLabel(String label) {
+        output.add(resolveLocalLabel(label));
+    }
+
+    private String resolveLocalLabel(String label) {
+        return currentProc.name + "__" + label;
+    }
+
     private void processLine(String line) {
-        StringTokenizer tokenizer = new StringTokenizer(line, " \t,.+-*/=", true);
-        StringBuilder outLine = new StringBuilder();
-        while (tokenizer.hasMoreElements()) {
-            String token = tokenizer.nextToken();
+        String tokens[] = splitToTokens(line);
+        for (int i = 0; i < tokens.length; i++) {
+            String token = tokens[i];
             Alias alias = resolveProcAlias(token);
             if (alias != null) {
-                token = alias.register;
+                tokens[i] = alias.register;
+            } else if (token.startsWith("@") && currentProc != null) {
+                tokens[i] = resolveLocalLabel(token.substring(1));
             }
-            outLine.append(token);
         }
+        StringBuilder outLine = new StringBuilder();
+        compiler.compile(tokens, outLine);
         output.add(outLine.toString());
+    }
+
+
+    private String[] splitToTokens(String line) {
+        StringTokenizer tokenizer = new StringTokenizer(line, " \t,.+-*/=", true);
+        List<String> result = new ArrayList<>();
+        boolean commentStarted = false;
+        while (tokenizer.hasMoreElements()) {
+            String next = tokenizer.nextToken();
+            String prev = result.isEmpty() ? null : result.get(result.size()-1);
+            if (prev != null && next.trim().isEmpty() && prev.trim().isEmpty()) {
+                result.set(result.size()-1, prev + next);
+                continue;
+            }
+            if (commentStarted) {
+                result.set(result.size()-1, prev + next);
+                continue;
+            }
+            if (";".equals(next)) {
+                commentStarted = true;
+            } else if ("/".equals(next) && "/".equals(prev)) {
+                result.set(result.size()-1, prev + next);
+                commentStarted = true;
+                continue;
+            }
+            result.add(next);
+        }
+        String[] array = new String[result.size()];
+        return result.toArray(array);
     }
 
 
@@ -99,16 +141,19 @@ public class Parser {
 
     private void startProc(String name) throws SyntaxException {
         checkName(name);
+        if (currentProc != null) {
+            error("nested .proc: '" + name + "'");
+        }
         currentProc = new Proc(name);
         output.add(name + ":");
     }
 
     private void endProc(String empty) throws SyntaxException {
         if (!empty.isEmpty()) {
-            throw new SyntaxException("extra characters in line").line(lineNumber);
+            error("extra characters in line");
         }
         if (currentProc == null) {
-            throw new SyntaxException("start .proc directive not found").line(lineNumber);
+            error("start .proc directive not found");
         }
         currentProc = null;
     }
@@ -116,7 +161,7 @@ public class Parser {
     private void use(String str) throws SyntaxException {
         String args[] = str.split("\\s+");
         if (args.length != 3 || !args[1].toLowerCase().equals("as")) {
-            throw new SyntaxException("wrong .use syntax ").line(lineNumber);
+            error("wrong .use syntax ");
         }
         String regName = args[0];
         checkRegister(regName);
@@ -125,7 +170,7 @@ public class Parser {
         Alias alias = new Alias(aliasName, regName);
         if (currentProc != null) {
             if (currentProc.uses.keySet().contains(aliasName)) {
-                throw new SyntaxException("alias already defined for this procedure").line(lineNumber);
+                error("alias already defined for this procedure");
             }
             currentProc.uses.put(aliasName, alias);
         }
@@ -134,24 +179,28 @@ public class Parser {
 
     private void checkName(String name) throws SyntaxException {
         if (!ParserUtils.isValidName(name)) {
-            throw new SyntaxException("wrong name: " + name).line(lineNumber);
+            error("wrong name: '" + name + "'");
         }
         if (ParserUtils.isRegister(name)) {
-            throw new SyntaxException(" wrong name: " + name + " (register name)").line(lineNumber);
+            error(" wrong name: '" + name + "' (register name)");
         }
         if (ParserUtils.isInstruction(name)) {
-            throw new SyntaxException(" wrong name: " + name + " (instruction name)").line(lineNumber);
+            error(" wrong name: '" + name + "' (instruction name)");
         }
     }
 
     private void checkRegister(String name) throws SyntaxException {
         if (!ParserUtils.isRegister(name)) {
-            throw new SyntaxException("register expected: " + name);
+            error("register expected: " + name);
         }
     }
 
+    private void error(String msg) throws SyntaxException {
+        throw new SyntaxException(msg).line(lineNumber);
+    }
 
-    public List<String> getOutput() {
+
+    List<String> getOutput() {
         return output;
     }
 }
