@@ -1,8 +1,12 @@
 package ru.trolsoft.asmext;
 
-public class SyntaxException extends Exception {
+class SyntaxException extends Exception {
 
     int line;
+
+    SyntaxException() {
+        super();
+    }
 
     SyntaxException(String message) {
         super(message);

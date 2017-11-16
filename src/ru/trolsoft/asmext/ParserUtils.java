@@ -38,5 +38,36 @@ public class ParserUtils {
         return Instructions.isInstruction(name);
     }
 
+    static boolean isComment(String token) {
+        return token.startsWith(";") || token.startsWith("//");
+    }
+
+    static int parseValue(String s) {
+        int sign;
+        if (s.charAt(0) == '-') {
+            s = s.substring(1);
+            sign = -1;
+        } else {
+            sign = 1;
+        }
+        if (s.startsWith("0") && s.length() > 2) {
+            char c2 = s.charAt(1);
+            if (c2 == 'x' || c2 == 'X') {
+                return sign*Integer.parseInt(s.substring(2), 16);
+            } else if (c2 == 'b' || c2 == 'B') {
+                return sign*Integer.parseInt(s.substring(2), 2);
+            }
+        }
+        return Integer.parseInt(s);
+    }
+
+    static boolean isNumber(String str) {
+        try {
+            parseValue(str);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
 }
