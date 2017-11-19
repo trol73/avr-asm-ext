@@ -18,9 +18,15 @@ public class ExpressionsCompiler {
 
     static boolean compile(String[] tokens, StringBuilder out) throws CompileException {
         List<String> syntaxTokens = new ArrayList<>();
-        for (String s : tokens) {
-            s = s.trim();
-            if (!s.isEmpty() && !ParserUtils.isComment(s)) {
+        for (int i = 0; i < tokens.length; i++) {
+            String s = tokens[i].trim();
+            if (s.isEmpty() || ParserUtils.isComment(s)) {
+                continue;
+            }
+            String prevToken = i > 0 ? tokens[i-1] : null;
+            if (("+".equals(prevToken) || "-".equals(prevToken)) && ("=".equals(s) || s.equals(prevToken))) {
+                syntaxTokens.set(syntaxTokens.size()-1, prevToken + s);
+            } else {
                 syntaxTokens.add(s);
             }
         }
@@ -61,7 +67,9 @@ public class ExpressionsCompiler {
     private static void moveToReg(String firstSpaces, String destReg, List<String> tokens, StringBuilder out) throws CompileException {
         String firstArg = tokens.get(0);
         if (ParserUtils.isRegister(firstArg)) {
-            addInstruction(firstSpaces, "mov", destReg, firstArg, out);
+            if (!firstArg.equalsIgnoreCase(destReg)) {
+                addInstruction(firstSpaces, "mov", destReg, firstArg, out);
+            }
         } else {
             //if (ParserUtils.isNumber(firstArg)) {
                 int val;

@@ -70,7 +70,8 @@ class Parser {
         String tokens[] = splitToTokens(line);
         for (int i = 0; i < tokens.length; i++) {
             String token = tokens[i];
-            Alias alias = resolveProcAlias(token);
+            String nextToken = i < tokens.length-1 ? tokens[i+1] : tokens[i];
+            Alias alias = ":".equals(nextToken) ? null : resolveProcAlias(token);
             if (alias != null) {
                 tokens[i] = alias.register;
             } else if (token.startsWith("@") && currentProcedure != null) {

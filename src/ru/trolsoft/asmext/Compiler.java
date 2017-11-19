@@ -2,6 +2,7 @@ package ru.trolsoft.asmext;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.StringTokenizer;
 
 class Compiler {
 
@@ -33,6 +34,8 @@ class Compiler {
                 break;
             case "call":
             case "rcall":
+            case "jmp":
+            case "rjmp":
                 compileCall(src, tokens, out, firstToken);
                 break;
             default:
@@ -48,11 +51,12 @@ class Compiler {
         final int STATE_ARG_NAME = 3;
         final int STATE_WAIT_NAME_SEPARATOR = 4;
         final int STATE_ARG_VALUE = 5;
-        final int STATE_DONE_ARG = 7;
+//        final int STATE_DONE_ARG = 7;
         final int STATE_DONE = 6;
         int state = STATE_WAIT_INSTRUCTION;
         String procedureName = null;
         String argName = null;
+        String argValue = "";
         Procedure procedure = null;
 
         for (String s : tokens) {
@@ -83,28 +87,38 @@ class Compiler {
                     break;
                 case STATE_ARG_NAME:
                     argName = s;
+                    argValue = "";
                     state = STATE_WAIT_NAME_SEPARATOR;
                     break;
                 case STATE_WAIT_NAME_SEPARATOR:
                     if (")".equals(s) && procedure.args.size() == 1) {
                         String name = procedure.args.values().iterator().next().name;
                         args.add(new NamedPair(name, argName));
-                    } else  if (!":".equals(s)) {
+                    } else if (!":".equals(s)) {
                         throw new SyntaxException("wrong call syntax");
                     }
                     state = STATE_ARG_VALUE;
                     break;
                 case STATE_ARG_VALUE:
-                    args.add(new NamedPair(argName, s));
-                    state = STATE_DONE_ARG;
-                    break;
-                case STATE_DONE_ARG:
                     if (",".equals(s)) {
+                        args.add(new NamedPair(argName, argValue));
                         state = STATE_ARG_NAME;
+                        argValue = "";
                     } else if (")".equals(s)) {
+                        args.add(new NamedPair(argName, argValue));
                         state = STATE_DONE;
+                        argValue = "";
+                    } else {
+                        argValue += s;
                     }
                     break;
+//                case STATE_DONE_ARG:
+//                    if (",".equals(s)) {
+//                        state = STATE_ARG_NAME;
+//                    } else if (")".equals(s)) {
+//                        state = STATE_DONE;
+//                    }
+//                    break;
                 case STATE_DONE:
                     if (!ParserUtils.isComment(s)) {
                         throw new SyntaxException("wrong call syntax");
@@ -143,22 +157,11 @@ class Compiler {
                 String argName = arg.name;
                 String regName = procedure.args.get(argName).register;
                 String value = arg.value;
-                String[] t = new String[] {
-                        regName,
-                        "=",
-                        value
-                };
-                try {
+                if (!regName.equalsIgnoreCase(value)) {
                     out.append(firstSpaces);
-                    if (!ExpressionsCompiler.compile(t, out)) {
-                        throw new SyntaxException("wrong value: '" + value + "'");
-                    }
-                    if (out.length() > 0) {
-                        out.deleteCharAt(out.length() - 1);
-                    }
-                    out.append("\t; ").append(argName).append(" = ").append(value).append("\n");
-                } catch (ExpressionsCompiler.CompileException e) {
-                    e.printStackTrace();
+                    addArgumentAssign(out, argName, regName, value);
+                } else {
+                    out.append(firstSpaces).append("; ").append(argName).append(" = ").append(value).append("\n");
                 }
             } // for args
             out.append(firstSpaces).append(firstToken).append("\t").append(procedure.name).append("\n");
@@ -167,6 +170,28 @@ class Compiler {
 
         compileDefault(src, tokens, out, firstToken);
 
+    }
+
+    private void addArgumentAssign(StringBuilder out, String argName, String regName, String value) throws SyntaxException {
+        StringTokenizer tokenizer = new StringTokenizer(value, "+-", true);
+        String[] t = new String[2 + tokenizer.countTokens()];
+        t[0] = regName;
+        t[1] = "=";
+        int i = 2;
+        while (tokenizer.hasMoreTokens()) {
+            t[i++] = tokenizer.nextToken();
+        }
+        try {
+            if (!ExpressionsCompiler.compile(t, out)) {
+                throw new SyntaxException("wrong value: '" + value + "'");
+            }
+            if (out.length() > 0) {
+                out.deleteCharAt(out.length() - 1);
+            }
+            out.append("\t; ").append(argName).append(" = ").append(value).append("\n");
+        } catch (ExpressionsCompiler.CompileException e) {
+            e.printStackTrace();
+        }
     }
 
 
