@@ -65,14 +65,34 @@ public class ExpressionsCompiler {
 
 
     private static void moveToReg(String firstSpaces, String destReg, List<String> tokens, StringBuilder out) throws CompileException {
+        if (tokens.isEmpty()) {
+            throw new CompileException("empty expression");
+        }
         String firstArg = tokens.get(0);
         if (ParserUtils.isRegister(firstArg)) {
             if (!firstArg.equalsIgnoreCase(destReg)) {
                 addInstruction(firstSpaces, "mov", destReg, firstArg, out);
             }
         } else {
-            //if (ParserUtils.isNumber(firstArg)) {
-                int val;
+            // x = -3
+            // x = -x
+            int val;
+            if ("-".equals(firstArg) && tokens.size() > 1) {
+                String secondArg = tokens.get(1);
+                // x = -y
+                if (ParserUtils.isRegister(secondArg)) {
+                    if (destReg.equalsIgnoreCase(secondArg)) {
+                        addInstruction(firstSpaces, "neg", destReg, null, out);
+                    } else {
+                        addInstruction(firstSpaces, "mov", destReg, secondArg, out);
+                        addInstruction(firstSpaces, "neg", destReg, null, out);
+                    }
+                } else {
+                    // x = -123
+                    addInstruction(firstSpaces, "ldi", destReg, "-"+secondArg, out);
+                }
+                tokens.remove(0);
+            } else {
                 try {
                     val = ParserUtils.parseValue(firstArg);
                 } catch (NumberFormatException e) {
@@ -83,9 +103,7 @@ public class ExpressionsCompiler {
                 } else {
                     addInstruction(firstSpaces, "ldi", destReg, firstArg, out);
                 }
-                //} else {
-                // throw new CompileException("wrong argument: " + firstArg);
-            //}
+            }
         }
         if (tokens.size() == 1) {
             return;

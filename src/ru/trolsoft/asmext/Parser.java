@@ -10,6 +10,7 @@ class Parser {
     private List<String> output = new ArrayList<>();
     private final Compiler compiler = new Compiler(this);
     Map<String, Procedure> procedures = new HashMap<>();
+    Stack<Block> blocks = new Stack<>();
 
     Parser() {
 
@@ -50,7 +51,11 @@ class Parser {
             procArgs(trimLine.substring(".args".length()).trim());
             output.add(";" + line);
         } else if (trimLine.startsWith("@") && trimLine.contains(":") && currentProcedure != null) {
-            localLabel(trimLine.substring(1, trimLine.length()-1).trim());
+            localLabel(trimLine.substring(1, trimLine.length() - 1).trim());
+        } else if (checkDirective(trimLine, ".loop")) {
+            startLoop(line, trimLine.substring(".loop".length()).trim());
+        } else if (checkDirective(trimLine, ".endloop")) {
+            endLoop(line, trimLine.substring(".endloop".length()).trim());
         } else {
             processLine(line);
         }
@@ -172,6 +177,89 @@ class Parser {
         currentProcedure = null;
     }
 
+    private void startLoop(String line, String args) throws SyntaxException {
+        if (args.endsWith(":")) {
+            args = args.substring(0, args.length()-1).trim();
+        }
+        if (args.length() < 3) {
+            error("expression expected");
+        }
+        if (!(args.startsWith("(") && args.endsWith(")"))) {
+            error("expected ()");
+        }
+        args = args.substring(1, args.length()-1).trim();
+        Block block = new Block(Block.TYPE_LOOP, splitToTokens(args), lineNumber);
+        if (block.args.isEmpty()) {
+            error("loop parameter expected");
+        }
+        blocks.push(block);
+        block.label = currentProcedure != null ? currentProcedure.name : "";
+        block.label += "__" + block.args.get(0) + "_" + lineNumber;
+        String reg = block.args.get(0);
+        if (currentProcedure != null) {
+            String resolve = currentProcedure.resolveVariable(reg);
+            if (resolve != null) {
+                reg = resolve;
+            }
+        }
+        if (!ParserUtils.isRegister(reg)) {
+            error("register or alias expected: " + reg);
+        }
+        block.reg = reg;
+        if (block.args.size() > 1) {
+            if (!"=".equals(block.args.get(1)) || block.args.size() < 3) {
+                error("wrong expression");
+            }
+            StringBuilder sb = createStringBuilderWithSpaces(line);
+            String val = block.args.get(2);
+            if (currentProcedure != null) {
+                String resolve = currentProcedure.resolveVariable(val);
+                if (resolve != null) {
+                    val = resolve;
+                }
+            }
+            if (block.args.size() == 3 && ParserUtils.isRegister(val)) {
+                sb.append("mov\t").append(reg).append(", ").append(block.args.get(2));
+            } else {
+                sb.append("ldi\t").append(reg).append(", ");
+                for (int i = 2; i < block.args.size(); i++) {
+                    sb.append(block.args.get(i));
+                }
+            }
+            sb.append("\t\t; ").append(block.args.get(0));
+            output.add(sb.toString());
+        }
+        output.add(block.label + ":");
+    }
+
+    private StringBuilder createStringBuilderWithSpaces(String line) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == ' ' || c == '\t') {
+                sb.append(c);
+            } else {
+                break;
+            }
+        }
+        return sb;
+    }
+
+    private void endLoop(String line, String empty) throws SyntaxException {
+        if (!empty.isEmpty()) {
+            error("extra characters in line");
+        }
+        Block block = blocks.pop();
+        if (block.type != Block.TYPE_LOOP) {
+            error(".loop not found");
+        }
+        String spaces = createStringBuilderWithSpaces(line).toString();
+
+        output.add(spaces + "dec\t" + block.reg + "\t\t; " + block.args.get(0));
+        output.add(spaces + "brne\t" + block.label);
+    }
+
+
 
     private void procArgs(String args) throws SyntaxException {
         if (currentProcedure == null) {
@@ -199,21 +287,25 @@ class Parser {
 
 
     private void use(String str) throws SyntaxException {
-        String args[] = str.split("\\s+");
-        if (args.length != 3 || !args[1].toLowerCase().equals("as")) {
-            error("wrong .use syntax ");
-        }
-        String regName = args[0];
-        String aliasName = args[2];
-        Alias alias = createAlias(aliasName, regName);
-        if (currentProcedure != null) {
-            if (currentProcedure.hasAlias(aliasName)) {
-                error("alias '" + aliasName + "' already defined for this procedure");
+        String uses[] = str.split(",");
+        for (String use : uses) {
+            use = use.trim();
+            String args[] = use.split("\\s+");
+            if (args.length != 3 || !args[1].toLowerCase().equals("as")) {
+                error("wrong .use syntax ");
             }
-            if (currentProcedure.hasArg(aliasName)) {
-                error("argument '" + aliasName + "' already defined for this procedure");
+            String regName = args[0];
+            String aliasName = args[2];
+            Alias alias = createAlias(aliasName, regName);
+            if (currentProcedure != null) {
+                if (currentProcedure.hasAlias(aliasName)) {
+                    error("alias '" + aliasName + "' already defined for this procedure");
+                }
+                if (currentProcedure.hasArg(aliasName)) {
+                    error("argument '" + aliasName + "' already defined for this procedure");
+                }
+                currentProcedure.addAlias(alias);
             }
-            currentProcedure.addAlias(alias);
         }
     }
 

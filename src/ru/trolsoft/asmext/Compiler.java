@@ -190,7 +190,7 @@ class Compiler {
             }
             out.append("\t; ").append(argName).append(" = ").append(value).append("\n");
         } catch (ExpressionsCompiler.CompileException e) {
-            e.printStackTrace();
+            throw new SyntaxException(e.getMessage());
         }
     }
 

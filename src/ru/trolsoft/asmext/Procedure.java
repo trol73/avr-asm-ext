@@ -30,6 +30,23 @@ public class Procedure {
         return args.keySet().contains(name);
     }
 
+    Alias getAlias(String name) {
+        return uses.get(name);
+    }
+
+    Alias getArg(String name) {
+        return args.get(name);
+    }
+
+    String resolveVariable(String name) {
+        Alias alias = uses.get(name);
+        if (alias != null) {
+            return alias.register;
+        }
+        alias = args.get(name);
+        return alias != null ? alias.register : null;
+    }
+
     @Override
     public String toString() {
         return "Procedure " + name + "(" + args + ") uses " + uses;
