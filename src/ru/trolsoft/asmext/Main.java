@@ -49,4 +49,30 @@ public class Main {
 
  IF (!sreg.z)
  ENDIF
+                                                                unsigned            signed
+
+ if (r1 == r2) goto lbl;        cp r1, r2; breq lbl
+
+ if (r1 != r2) goto lbl;        cp r1, r2; brne lbl
+
+ if (r1 == const) goto lbl;     cpi r, const; breq lbl
+
+ if (r != const) goto lbl;     cpi r, const; brne lbl
+
+ if (r1 < r2) goto lbl;         cp r1, r2;                         brlo               brlt
+
+ if (r1 > r2) goto lbl;         cp r1, r2
+
+ if (r1 <= r2) goto lbl;        cp r1, r2
+
+ if (r1 >= r2) goto lbl;        cp r1, r2;                          brsh            brge
+
+ if (r == 0) goto lbl           tst r; breq lbl
+
+ if (r != 0) goto lbl           tst r; brne lbl
+
+.if
+.else
+.endif
+
  */

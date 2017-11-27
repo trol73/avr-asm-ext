@@ -23,4 +23,8 @@ public class Registers {
     public static boolean isRegister(String name) {
         return name != null && REGISTERS.contains(name.toLowerCase());
     }
+
+    public static boolean isPair(String name) {
+        return "X".equals(name) || "Y".equals(name) || "Z".equals(name);
+    }
 }

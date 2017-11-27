@@ -10,6 +10,7 @@ class Parser {
     private List<String> output = new ArrayList<>();
     private final Compiler compiler = new Compiler(this);
     Map<String, Procedure> procedures = new HashMap<>();
+    Map<String, Variable> variables = new HashMap<>();
     Stack<Block> blocks = new Stack<>();
 
     Parser() {
@@ -56,6 +57,8 @@ class Parser {
             startLoop(line, trimLine.substring(".loop".length()).trim());
         } else if (checkDirective(trimLine, ".endloop")) {
             endLoop(line, trimLine.substring(".endloop".length()).trim());
+        } else if (checkDirective(trimLine, ".extern")) {
+            extern(line, trimLine.substring(".extern".length()).trim());
         } else {
             processLine(line);
         }
@@ -93,7 +96,7 @@ class Parser {
     }
 
 
-    private String[] splitToTokens(String line) {
+    String[] splitToTokens(String line) {
         StringTokenizer tokenizer = new StringTokenizer(line, " \t,.+-*/=():", true);
         List<String> result = new ArrayList<>();
         boolean commentStarted = false;
@@ -141,7 +144,7 @@ class Parser {
             return true;
         }
         char ch = line.charAt(directiveName.length());
-        return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r';
+        return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '(';
     }
 
     private String removeCommentsAndSpaces(String s) {
@@ -249,6 +252,9 @@ class Parser {
         if (!empty.isEmpty()) {
             error("extra characters in line");
         }
+        if (blocks.empty()) {
+            error(".loop not found");
+        }
         Block block = blocks.pop();
         if (block.type != Block.TYPE_LOOP) {
             error(".loop not found");
@@ -257,6 +263,58 @@ class Parser {
 
         output.add(spaces + "dec\t" + block.reg + "\t\t; " + block.args.get(0));
         output.add(spaces + "brne\t" + block.label);
+    }
+
+
+    private void extern(String line, String args) throws SyntaxException {
+        // check procedure
+        int indx = args.indexOf('(');
+        if (indx > 0) {
+            String procArgs = args.substring(indx);
+            if (!procArgs.endsWith(")")) {
+                error("') not found");
+            }
+            procArgs = procArgs.substring(1, procArgs.length()-1).trim();
+            String procName = args.substring(0, indx).trim();
+
+            String[] split = procArgs.split(",");
+            Procedure proc = new Procedure(procName);
+            for (String s : split) {
+                s = s.trim();
+                String nv[] = s.split(":");
+                if (nv.length != 2) {
+                    error("wrong argument: " + s);
+                }
+                String name = nv[0].trim();
+                String reg = nv[1].trim();
+                Alias alias = createAlias(name, reg);
+                if (proc.hasArg(name)) {
+                    error("duplicate argument '" + name + "'");
+                }
+                proc.addArg(alias);
+            } // for
+            procedures.put(procName, proc);
+            output.add(".extern " + procName + "\t; " + procArgs);
+            return;
+        }
+        // check variable
+        indx = args.indexOf(':');
+        if (indx > 0) {
+            String varName = args.substring(0, indx).trim();
+            String varType = args.substring(indx+1).trim().toLowerCase();
+            if (variables.containsKey(varName)) {
+                error("Variable already defined: " + varName);
+            }
+            int type = ParserUtils.getTypeSize(varType);
+            if (type < 0) {
+                error("Invalid variable type: " + varType);
+            }
+            Variable var = new Variable(varName, type);
+            variables.put(varName, var);
+            output.add(".extern " + varName + "\t; " + varType);
+            return;
+        }
+        output.add(line);
     }
 
 
@@ -340,5 +398,9 @@ class Parser {
 
     List<String> getOutput() {
         return output;
+    }
+
+    public Variable getVariable(String name) {
+        return variables.get(name);
     }
 }

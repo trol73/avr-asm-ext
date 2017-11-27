@@ -70,4 +70,17 @@ public class ParserUtils {
         }
     }
 
+    static int getTypeSize(String type) {
+        switch (type) {
+            case "byte":
+                return 1;
+            case "word":
+                return 2;
+            case "dword":
+                return 4;
+            default:
+                return -1;
+        }
+    }
+
 }

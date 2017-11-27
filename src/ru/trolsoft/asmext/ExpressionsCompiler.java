@@ -5,6 +5,12 @@ import java.util.List;
 
 public class ExpressionsCompiler {
 
+    private Parser parser;
+
+    ExpressionsCompiler(Parser parser) {
+        this.parser = parser;
+    }
+
     static class CompileException extends Exception {
 
         CompileException() {
@@ -16,7 +22,7 @@ public class ExpressionsCompiler {
         }
     }
 
-    static boolean compile(String[] tokens, StringBuilder out) throws CompileException {
+    boolean compile(String[] tokens, StringBuilder out) throws CompileException {
         List<String> syntaxTokens = new ArrayList<>();
         for (int i = 0; i < tokens.length; i++) {
             String s = tokens[i].trim();
@@ -35,36 +41,42 @@ public class ExpressionsCompiler {
         }
         String firstSpace = tokens[0].trim().isEmpty() ? tokens[0] : "";
         String operation = syntaxTokens.get(1);
-        if (ParserUtils.isRegister(syntaxTokens.get(0))) {
-            String destReg = syntaxTokens.get(0);
+
+        String dest = syntaxTokens.get(0);
+        boolean pairMatch = isPair(dest) && ("++".equals(operation) || "--".equals(operation) || "+=".equals(operation) || "-=".equals(operation));
+        if (ParserUtils.isRegister(dest) || pairMatch) {
             switch (operation) {
                 case "=":
                     syntaxTokens.remove(0);
                     syntaxTokens.remove(0);
-                    moveToReg(firstSpace, destReg, syntaxTokens, out);
+                    moveToReg(firstSpace, dest, syntaxTokens, out);
                     return true;
                 case "++":
                 case "--":
                     if (syntaxTokens.size() != 2) {
                         throw new CompileException();
                     }
-                    incDecReg(firstSpace, destReg, operation, out);
+                    incDecReg(firstSpace, dest, operation, out);
                     return true;
                 case "+=":
                 case "-=":
                     if (syntaxTokens.size() != 3) {
                         throw new CompileException();
                     }
-                    addReg(firstSpace, destReg, operation, syntaxTokens.get(2), out);
+                    addReg(firstSpace, dest, operation, syntaxTokens.get(2), out);
                     return true;
+                case ".":
+                    return compileGroup(firstSpace, syntaxTokens, out);
             }
+        } else if (isVar(dest)) {
+            moveToVar(firstSpace, dest, syntaxTokens, out);
+            return true;
         }
         return false;
     }
 
 
-
-    private static void moveToReg(String firstSpaces, String destReg, List<String> tokens, StringBuilder out) throws CompileException {
+    private void moveToReg(String firstSpaces, String destReg, List<String> tokens, StringBuilder out) throws CompileException {
         if (tokens.isEmpty()) {
             throw new CompileException("empty expression");
         }
@@ -101,7 +113,14 @@ public class ExpressionsCompiler {
                 if (val == 0) {
                     addInstruction(firstSpaces, "clr", destReg, null, out);
                 } else {
-                    addInstruction(firstSpaces, "ldi", destReg, firstArg, out);
+                    if (isVar(firstArg)) {
+                        int size = getVarSize(firstArg);
+                        if (size == 1) {
+                            addInstruction(firstSpaces, "lds", destReg, firstArg, out);
+                        }
+                    } else {
+                        addInstruction(firstSpaces, "ldi", destReg, firstArg, out);
+                    }
                 }
             }
         }
@@ -151,16 +170,96 @@ public class ExpressionsCompiler {
         }
     }
 
-
-    private static void incDecReg(String firstSpace, String destReg, String operation, StringBuilder out) throws CompileException {
-        String instruction = "++".equals(operation) ? "inc" : "dec";
-        addInstruction(firstSpace, instruction, destReg, null, out);
+    private void moveToVar(String firstSpace, String varName, List<String> syntaxTokens, StringBuilder out) throws CompileException {
+        if (syntaxTokens.size() < 3 || !"=".equals(syntaxTokens.get(1))) {
+            throw new CompileException("wrong operation");
+        }
+        int varSize = getVarSize(varName);
+        if (varSize == 1) {
+            if (syntaxTokens.size() != 3) {
+                throw new CompileException("wrong operation");
+            }
+            String reg = syntaxTokens.get(2);
+            if (!ParserUtils.isRegister(reg)) {
+                throw new CompileException("register expected: " + reg);
+            }
+            addInstruction(firstSpace, "sts", varName, reg, out);
+        } else {
+            if (syntaxTokens.size() != 2 + varSize + varSize-1) {
+                throw new CompileException("wrong operation, sizes mismatch");
+            }
+            for (int i = 0; i < varSize; i++) {
+                String reg = syntaxTokens.get(2 + i*2);
+                if (!ParserUtils.isRegister(reg)) {
+                    throw new CompileException("register expected: " + reg);
+                }
+                String varAddr = i < varSize-1 ? varName + "+" + (varSize-i-1) : varName;
+                addInstruction(firstSpace, "sts", varAddr, reg, out);
+            }
+        }
     }
 
-    private static void addReg(String firstSpace, String destReg, String operation, String argument, StringBuilder out) throws CompileException {
+
+    private boolean compileGroup(String firstSpace, List<String> syntaxTokens, StringBuilder out) throws CompileException {
+        if (syntaxTokens.size() < 3) {
+            return false;
+        }
+        //String operation = syntaxTokens.get(syntaxTokens.size()-2);
+        String src = syntaxTokens.get(syntaxTokens.size()-1);
+        syntaxTokens.remove(syntaxTokens.size()-1);
+        syntaxTokens.remove(syntaxTokens.size()-1);
+        if (!checkRegisterGroup(syntaxTokens)) {
+            throw new CompileException("wrong left side expression");
+        }
+        if (isVar(src)) {
+            int varSize = getVarSize(src);
+            if (syntaxTokens.size() != varSize*2 - 1) {
+                throw new CompileException("wrong operation, sizes mismatch");
+            }
+            for (int i = 0; i < varSize; i++) {
+                String varAddr = i < varSize - 1 ? src + "+" + (varSize - i - 1) : src;
+                String reg = syntaxTokens.get(i*2);
+                addInstruction(firstSpace, "lds", reg, varAddr, out);
+            }
+        } else {
+            int groupSize = syntaxTokens.size()/2 + 1;
+            boolean isNumber = ParserUtils.isNumber(src);
+            int val = isNumber ? ParserUtils.parseValue(src) : -1;
+            for (int i = 0; i < groupSize; i++) {
+                String reg = syntaxTokens.get(i*2);
+                String v;
+                if (isNumber) {
+                    int part = (val >> (8*(groupSize-i-1))) & 0xff;
+                    v = "0x" + Integer.toHexString(part);
+                } else {
+                    v = "(" + src + " >> " + 8*(groupSize-i-1) + ") & 0xff";
+                }
+                addInstruction(firstSpace, "ldi", reg, v, out);
+            }
+        }
+        return true;
+    }
+
+
+
+
+    private void incDecReg(String firstSpace, String destReg, String operation, StringBuilder out) throws CompileException {
+        if (isPair(destReg)) {
+            String instruction = "++".equals(operation) ? "adiw" : "sbiw";
+            addInstruction(firstSpace, instruction, destReg + "L", "1", out);
+        } else {
+            String instruction = "++".equals(operation) ? "inc" : "dec";
+            addInstruction(firstSpace, instruction, destReg, null, out);
+        }
+    }
+
+    private void addReg(String firstSpace, String destReg, String operation, String argument, StringBuilder out) throws CompileException {
         if (ParserUtils.isRegister(argument)) {
             String instruction = "+=".equals(operation) ? "add" : "sub";
             addInstruction(firstSpace, instruction, destReg, argument, out);
+        } else if (isPair(destReg)) {
+            String instruction = "+=".equals(operation) ? "adiw" : "sbiw";
+            addInstruction(firstSpace, instruction, destReg + "L", argument, out);
         } else if (ParserUtils.isNumber(argument)) {
             if ("+=".equals(operation)) {
                 argument = "-" + argument;
@@ -173,7 +272,7 @@ public class ExpressionsCompiler {
 
 
 
-    private static void addInstruction(String firstSpaces, String operation, String destReg, String argument, StringBuilder out) {
+    private void addInstruction(String firstSpaces, String operation, String destReg, String argument, StringBuilder out) {
         out.append(firstSpaces);
         out.append(operation);
         out.append("\t");
@@ -185,32 +284,29 @@ public class ExpressionsCompiler {
         out.append("\n");
     }
 
+    private boolean isVar(String name) {
+        return parser != null && parser.getVariable(name) != null;
+    }
 
-    public static void main(String[] args) throws CompileException {
-        String[] tokens = new String[] {
-          "\t", "r31", " ", " = ", "r16", "+", "0x10"
-        };
-        StringBuilder out = new StringBuilder();
-        compile(tokens, out);
+    private int getVarSize(String name) {
+        Variable var = parser != null ? parser.getVariable(name) : null;
+        return var != null ? var.size : -1;
+    }
 
-        tokens = new String[] {
-            "   ", "r20", " ", " = ", " ", "-0x12", "+", "", "1"
-        };
-        compile(tokens, out);
-        tokens = new String[] {
-                "   ", "r0", " ", "++",
-        };
-        compile(tokens, out);
-        tokens = new String[] {
-                "   ", "r0", " ", "--",
-        };
-        compile(tokens, out);
+    private boolean checkRegisterGroup(List<String> tokens) {
+        for (int i = 0; i < tokens.size()/2+1; i++) {
+            if (!ParserUtils.isRegister(tokens.get((2*i)))) {
+                return false;
+            }
+            if (2*i + 1 < tokens.size() && !".".equals(tokens.get(2*i+1))) {
+                return false;
+            }
+        }
+        return true;
+    }
 
-        tokens = new String[] {
-                "   ", "r0", " ", "-=", "1"
-        };
-        compile(tokens, out);
-        System.out.println(out);
+    private static boolean isPair(String name) {
+        return "X".equals(name) || "Y".equals(name) || "Z".equals(name);
     }
 
 

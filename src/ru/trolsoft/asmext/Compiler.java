@@ -7,9 +7,11 @@ import java.util.StringTokenizer;
 class Compiler {
 
     private final Parser parser;
+    private final ExpressionsCompiler expressionsCompiler;
 
     Compiler(Parser parser) {
         this.parser = parser;
+        this.expressionsCompiler = new ExpressionsCompiler(parser);
     }
 
     void compile(String src, String[] tokens, StringBuilder out) throws SyntaxException {
@@ -38,6 +40,10 @@ class Compiler {
             case "rjmp":
                 compileCall(src, tokens, out, firstToken);
                 break;
+            case "if":
+                if (compileIfGoto(src, tokens, out, firstToken)) {
+                    break;
+                }
             default:
                 compileDefault(src, tokens, out, firstToken);
         }
@@ -182,7 +188,7 @@ class Compiler {
             t[i++] = tokenizer.nextToken();
         }
         try {
-            if (!ExpressionsCompiler.compile(t, out)) {
+            if (!expressionsCompiler.compile(t, out)) {
                 throw new SyntaxException("wrong value: '" + value + "'");
             }
             if (out.length() > 0) {
@@ -232,11 +238,124 @@ class Compiler {
     }
 
 
+    private boolean compileIfGoto(String src, String[] srcTokens, StringBuilder out, String firstToken) throws SyntaxException {
+        List<String> tokens = new ArrayList<>();
+        for (int i = 1; i < srcTokens.length; i++) {
+            String s = srcTokens[i];
+            if ("=".equals(s)) {
+                String prev = srcTokens[i-1];
+                if ("=".equals(prev) || "!".equals(prev) || ">".equals(prev) || "<".equals(prev)) {
+                    srcTokens[i] = prev + s;
+                    srcTokens[i-1] = "";
+                }
+            }
+        }
+        for (String s : srcTokens) {
+            s = s.trim();
+            if (!s.isEmpty()) {
+                tokens.add(s);
+            }
+        }
+        boolean signed;
+        if ("s".equals(tokens.get(1))) {
+            signed = true;
+            tokens.remove(1);
+        } else if ("u".equals(tokens.get(1))) {
+            signed = false;
+            tokens.remove(1);
+        } else {
+            signed = false;
+        }
+
+        if (tokens.size() < 8 || !"goto".equals(tokens.get(tokens.size()-2)) || !"(".equals(tokens.get(1)) || !")".equals(tokens.get(tokens.size()-3))) {
+            return false;
+        }
+        String reg = tokens.get(2);
+        if (!ParserUtils.isRegister(reg)) {
+            throw new SyntaxException("Invalid expression");
+        }
+        String operation = tokens.get(3);
+        String arg = tokens.get(4);
+        Integer argVal = ParserUtils.isNumber(arg) ? ParserUtils.parseValue(arg) : null;
+        String firstSpaces = srcTokens.length > 0 && srcTokens[0].trim().isEmpty() ? srcTokens[0] : "";
+        String label = tokens.get(tokens.size()-1);
+        out.append("; ").append(src).append("\n");
+        String jumpCmd;
+        switch (operation) {
+            case "==":
+            case "!=":
+                jumpCmd = "==".equals(operation) ? "breq\t" : "brne\t";
+                if (argVal != null && argVal == 0) {
+                    out.append(firstSpaces).append("tst\t").append(reg).append('\n');
+                } else if (ParserUtils.isRegister(arg)) {
+                    out.append(firstSpaces).append("cp\t").append(reg).append(", ").append(arg).append('\n');
+                } else {
+                    out.append(firstSpaces).append("cpi\t").append(reg).append(", ").append(arg).append('\n');
+                }
+                out.append(firstSpaces).append(jumpCmd).append(label);
+                break;
+            case "<":
+                if (argVal != null && argVal == 0) {
+                    out.append(firstSpaces).append("tst\t").append(reg).append('\n');
+                    jumpCmd = "brmi\t";
+                } else if (ParserUtils.isRegister(arg)) {
+                    out.append(firstSpaces).append("cp\t").append(reg).append(", ").append(arg).append('\n');
+                    jumpCmd = signed ? "brlt\t" : "brlo\t";
+                } else {
+                    out.append(firstSpaces).append("cpi\t").append(reg).append(", ").append(arg).append('\n');
+                    jumpCmd = signed ? "brlt\t" : "brlo\t";
+                }
+                out.append(firstSpaces).append(jumpCmd).append(label);
+                break;
+            case ">=":
+                if (argVal != null && argVal == 0) {
+                    out.append(firstSpaces).append("tst\t").append(reg).append('\n');
+                    jumpCmd = "brpl\t";
+                } else if (ParserUtils.isRegister(arg)) {
+                    out.append(firstSpaces).append("cp\t").append(reg).append(", ").append(arg).append('\n');
+                    jumpCmd = signed ? "brge\t" : "brsh\t";
+                } else {
+                    out.append(firstSpaces).append("cpi\t").append(reg).append(", ").append(arg).append('\n');
+                    jumpCmd = signed ? "brge\t" : "brsh\t";
+                }
+                out.append(firstSpaces).append(jumpCmd).append(label);
+                break;
+
+            case ">":
+                // x > 0  ->   x >= 1
+                // x > y  ->   y < x
+                // x > k  ->   x >= k+1
+                if (ParserUtils.isRegister(arg)) {
+                    out.append(firstSpaces).append("cp\t").append(arg).append(", ").append(reg).append('\n');
+                    jumpCmd = signed ? "brlt\t" : "brlo\t";
+                } else {
+                    out.append(firstSpaces).append("cpi\t").append(reg).append(", ").append(arg).append("+1").append('\n');
+                    jumpCmd = signed ? "brge\t" : "brsh\t";
+                }
+                out.append(firstSpaces).append(jumpCmd).append(label);
+                break;
+            case "<=":
+                // x <= y  ->  y >= x
+                // x >= k  ->  x > k-1
+                if (ParserUtils.isRegister(arg)) {
+                    out.append(firstSpaces).append("cp\t").append(arg).append(", ").append(reg).append('\n');
+                    jumpCmd = signed ? "brge\t" : "brsh\t";
+                } else {
+                    out.append(firstSpaces).append("cpi\t").append(reg).append(", ").append(arg).append("-1").append('\n');
+                    jumpCmd = signed ? "brlt\t" : "brlo\t";
+                }
+                out.append(firstSpaces).append(jumpCmd).append(label);
+                break;
+        }
+        return true;
+    }
+
+
     private void compileDefault(String src, String[] tokens, StringBuilder out, String firstToken) throws SyntaxException {
         if (!ParserUtils.isInstruction(firstToken)) {
             try {
                 StringBuilder tempOut = new StringBuilder();
-                if (ExpressionsCompiler.compile(tokens, tempOut)) {
+                if (expressionsCompiler.compile(tokens, tempOut)) {
                     if (tempOut.length() > 0) {
                         tempOut.deleteCharAt(tempOut.length() - 1);
                     }
@@ -244,11 +363,7 @@ class Compiler {
                     return;
                 }
             } catch (ExpressionsCompiler.CompileException e) {
-                if (e.getMessage() != null) {
-                    throw new SyntaxException(e.getMessage());
-                } else {
-                    throw new SyntaxException("expression error");
-                }
+                throw new SyntaxException(e.getMessage() != null ? e.getMessage() : "expression error");
             }
         }
         for (String token : tokens) {
