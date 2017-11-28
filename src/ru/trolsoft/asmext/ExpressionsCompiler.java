@@ -3,7 +3,7 @@ package ru.trolsoft.asmext;
 import java.util.ArrayList;
 import java.util.List;
 
-public class ExpressionsCompiler {
+class ExpressionsCompiler {
 
     private Parser parser;
 
@@ -36,13 +36,20 @@ public class ExpressionsCompiler {
                 syntaxTokens.add(s);
             }
         }
+        ParserUtils.mergeTokens(syntaxTokens);
         if (syntaxTokens.size() < 2) {
             return false;
         }
         String firstSpace = tokens[0].trim().isEmpty() ? tokens[0] : "";
         String operation = syntaxTokens.get(1);
-
         String dest = syntaxTokens.get(0);
+        if (ParserUtils.isRegister(dest) && syntaxTokens.size() != 3 && ("+=".equals(operation) || "-=".equals(operation))) {
+            syntaxTokens.set(1, "=");
+            syntaxTokens.add(2, dest);
+            syntaxTokens.add(3, "+=".equals(operation) ? "+" : "-");
+            operation = "=";
+        }
+
         boolean pairMatch = isPair(dest) && ("++".equals(operation) || "--".equals(operation) || "+=".equals(operation) || "-=".equals(operation));
         if (ParserUtils.isRegister(dest) || pairMatch) {
             switch (operation) {
@@ -101,7 +108,7 @@ public class ExpressionsCompiler {
                     }
                 } else {
                     // x = -123
-                    addInstruction(firstSpaces, "ldi", destReg, "-"+secondArg, out);
+                    addInstruction(firstSpaces, "ldi", destReg, "-"+wrapToBrackets(secondArg), out);
                 }
                 tokens.remove(0);
             } else {
@@ -136,12 +143,12 @@ public class ExpressionsCompiler {
             String arg = tokens.get(i*2+1);
             switch (operation) {
                 case "+":
-                    if (ParserUtils.isNumber(arg)) {
-                        int val = ParserUtils.parseValue(arg);
-                        if (val == 1) {
+                    if (ParserUtils.isConstExpression(arg)) {
+                        Integer val = ParserUtils.isNumber(arg) ? ParserUtils.parseValue(arg) : null;
+                        if (val != null && val == 1) {
                             addInstruction(firstSpaces, "inc", destReg, null, out);
                         } else {
-                            addInstruction(firstSpaces, "subi", destReg, "-" + arg, out);
+                            addInstruction(firstSpaces, "subi", destReg, "-" + wrapToBrackets(arg), out);
                         }
                     } else if (ParserUtils.isRegister(arg)) {
                         addInstruction(firstSpaces, "add", destReg, arg, out);
@@ -150,12 +157,12 @@ public class ExpressionsCompiler {
                     }
                     break;
                 case "-":
-                    if (ParserUtils.isNumber(arg)) {
-                        int val = ParserUtils.parseValue(arg);
-                        if (val == 1) {
+                    if (ParserUtils.isConstExpression(arg)) {
+                        Integer val = ParserUtils.isNumber(arg) ? ParserUtils.parseValue(arg) : null;
+                        if (val != null && val == 1) {
                             addInstruction(firstSpaces, "dec", destReg, null, out);
                         } else {
-                            addInstruction(firstSpaces, "subi", destReg, arg, out);
+                            addInstruction(firstSpaces, "subi", destReg, wrapToBrackets(arg), out);
                         }
                     } else if (ParserUtils.isRegister(arg)) {
                         addInstruction(firstSpaces, "sub", destReg, arg, out);
@@ -259,17 +266,25 @@ public class ExpressionsCompiler {
             addInstruction(firstSpace, instruction, destReg, argument, out);
         } else if (isPair(destReg)) {
             String instruction = "+=".equals(operation) ? "adiw" : "sbiw";
+            argument = wrapToBrackets(argument);
             addInstruction(firstSpace, instruction, destReg + "L", argument, out);
-        } else if (ParserUtils.isNumber(argument)) {
+        } else if (ParserUtils.isConstExpression(argument)) {
+            argument = wrapToBrackets(argument);
             if ("+=".equals(operation)) {
                 argument = "-" + argument;
             }
             addInstruction(firstSpace, "subi", destReg, argument, out);
         } else {
-            throw new CompileException();
+            throw new CompileException(" addReg " + destReg + ", " + argument);
         }
     }
 
+    private String wrapToBrackets(String expr) {
+        if (!ParserUtils.isNumber(expr) && !ParserUtils.isInBrackets(expr)) {
+            return  "(" + expr + ")";
+        }
+        return expr;
+    }
 
 
     private void addInstruction(String firstSpaces, String operation, String destReg, String argument, StringBuilder out) {

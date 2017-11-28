@@ -2,9 +2,9 @@ package ru.trolsoft.asmext;
 
 public class Variable {
     public final String name;
-    public final int size;
+    final int size;
 
-    public Variable(String name, int size) {
+    Variable(String name, int size) {
         this.name = name;
         this.size = size;
     }

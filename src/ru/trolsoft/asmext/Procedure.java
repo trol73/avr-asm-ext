@@ -1,5 +1,6 @@
 package ru.trolsoft.asmext;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -10,8 +11,8 @@ public class Procedure {
 
     Procedure(String name) {
         this.name = name;
-        this.uses = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        this.args = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        this.uses = new HashMap<>();
+        this.args = new HashMap<>();
     }
 
     void addAlias(Alias alias) {

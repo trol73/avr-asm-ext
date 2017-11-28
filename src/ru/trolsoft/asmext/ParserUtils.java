@@ -3,6 +3,10 @@ package ru.trolsoft.asmext;
 import ru.trolsoft.avr.Instructions;
 import ru.trolsoft.avr.Registers;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
 public class ParserUtils {
 
     public static boolean isValidName(String name) {
@@ -70,6 +74,10 @@ public class ParserUtils {
         }
     }
 
+    static boolean isInBrackets(String s) {
+        return s != null && s.startsWith("(") && s.endsWith(")");
+    }
+
     static int getTypeSize(String type) {
         switch (type) {
             case "byte":
@@ -80,6 +88,74 @@ public class ParserUtils {
                 return 4;
             default:
                 return -1;
+        }
+    }
+
+    static boolean isConstExpression(String s) {
+        if (s == null || s.trim().isEmpty()) {
+            return false;
+        }
+        int bc = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (!isDigitChar(c) && " \t+-*/()".indexOf(c) < 0) {
+                return false;
+            }
+            if (c == '(') {
+                bc++;
+            } else if (c == ')') {
+                bc--;
+            }
+            if (bc < 0) {
+                return false;
+            }
+        }
+        return bc == 0;
+    }
+
+    static boolean isSimpleMatchOperator(String s) {
+        if (s == null ) {
+            return false;
+        }
+        s = s.trim();
+        if (s.length() == 1 && "+-*/".contains(s)) {
+            return true;
+        }
+        if ("<<".equals(s) || ">>".equals(s)) {
+            return true;
+        }
+        return false;
+    }
+
+    static void removeEmptyTokens(List<String> tokens) {
+        tokens.removeIf(s -> s == null || s.trim().isEmpty());
+    }
+
+    static void mergeTokens(List<String> tokens) {
+        removeEmptyTokens(tokens);
+        while (true) {
+            boolean found = false;
+            for (int i = 0; i < tokens.size(); i++) {
+                String curr = tokens.get(i);
+                String prev = i > 0 ? tokens.get(i - 1) : null;
+                String next = i < tokens.size() - 1 ? tokens.get(i + 1) : null;
+
+                if (isConstExpression(prev) && isConstExpression(next) && isSimpleMatchOperator(curr)) {
+                    tokens.set(i, prev + curr + next);
+                    tokens.set(i-1, null);
+                    tokens.set(i+1, null);
+                    found = true;
+                } else if ("(".equals(prev) && ")".equals(next) && isConstExpression(curr)) {
+                    tokens.set(i, prev + curr + next);
+                    tokens.set(i-1, null);
+                    tokens.set(i+1, null);
+                    found = true;
+                }
+            }
+            if (!found) {
+                break;
+            }
+            removeEmptyTokens(tokens);
         }
     }
 

@@ -5,7 +5,7 @@ import java.io.*;
 import java.util.*;
 
 class Parser {
-    private Procedure currentProcedure;
+    Procedure currentProcedure;
     private int lineNumber;
     private List<String> output = new ArrayList<>();
     private final Compiler compiler = new Compiler(this);
@@ -34,7 +34,7 @@ class Parser {
         }
     }
 
-    private void parseLine(String line) throws SyntaxException {
+    void parseLine(String line) throws SyntaxException {
         lineNumber++;
         String trimLine = removeCommentsAndSpaces(line);
         if (trimLine.isEmpty()) {
@@ -222,7 +222,7 @@ class Parser {
                 }
             }
             if (block.args.size() == 3 && ParserUtils.isRegister(val)) {
-                sb.append("mov\t").append(reg).append(", ").append(block.args.get(2));
+                sb.append("mov\t").append(reg).append(", ").append(val);
             } else {
                 sb.append("ldi\t").append(reg).append(", ");
                 for (int i = 2; i < block.args.size(); i++) {

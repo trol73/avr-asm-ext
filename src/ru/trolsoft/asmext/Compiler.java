@@ -41,7 +41,7 @@ class Compiler {
                 compileCall(src, tokens, out, firstToken);
                 break;
             case "if":
-                if (compileIfGoto(src, tokens, out, firstToken)) {
+                if (compileIfGoto(src, tokens, out)) {
                     break;
                 }
             default:
@@ -238,7 +238,7 @@ class Compiler {
     }
 
 
-    private boolean compileIfGoto(String src, String[] srcTokens, StringBuilder out, String firstToken) throws SyntaxException {
+    private boolean compileIfGoto(String src, String[] srcTokens, StringBuilder out) throws SyntaxException {
         List<String> tokens = new ArrayList<>();
         for (int i = 1; i < srcTokens.length; i++) {
             String s = srcTokens[i];
@@ -252,7 +252,7 @@ class Compiler {
         }
         for (String s : srcTokens) {
             s = s.trim();
-            if (!s.isEmpty()) {
+            if (!s.isEmpty() && !ParserUtils.isComment(s)) {
                 tokens.add(s);
             }
         }
