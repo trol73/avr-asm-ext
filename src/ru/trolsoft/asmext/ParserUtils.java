@@ -96,6 +96,7 @@ public class ParserUtils {
             return false;
         }
         int bc = 0;
+        char last = ' ';
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
             if (!isDigitChar(c) && " \t+-*/()".indexOf(c) < 0) {
@@ -109,6 +110,12 @@ public class ParserUtils {
             if (bc < 0) {
                 return false;
             }
+            if ("() \t".indexOf(c) < 0) {
+                last = c;
+            }
+        }
+        if ("+-*/".indexOf(last) >= 0) {
+            return false;
         }
         return bc == 0;
     }

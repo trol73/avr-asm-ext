@@ -151,7 +151,6 @@ class ParserTest {
             error = true;
         }
         assertTrue(error);
-
     }
 
 
@@ -174,6 +173,37 @@ class ParserTest {
         parser.parseLine(".extern cmd_x : byte");
         assertTrue(parser.variables.size() == 2);
         assertTrue(parser.variables.get("cmd_x").size == 1);
+    }
+
+    @Test
+    void testLabels() throws SyntaxException {
+        Parser parser = new Parser();
+        parser.parseLine(".proc my_proc");
+        parser.parseLine("@lbl:");
+        parser.parseLine("rjmp @lbl");
+        parser.parseLine(".endproc ; my_proc");
+
+        assertTrue(parser.getOutput().size() == 5);
+        assertEquals(parser.getOutput().get(0), "my_proc:");
+        assertEquals(parser.getOutput().get(1), ";.proc my_proc");
+        assertEquals(parser.getOutput().get(2), "my_proc__lbl:");
+        assertEquals(parser.getOutput().get(3), "rjmp my_proc__lbl");
+        assertEquals(parser.getOutput().get(4), ";.endproc ; my_proc");
+    }
+
+    @Test
+    void testArgs() throws SyntaxException {
+        Parser parser = new Parser();
+        parser.parseLine(".proc my_proc");
+        parser.parseLine(".args x(r24), y(r22)");
+        assertEquals(parser.currentProcedure.name, "my_proc");
+        assertTrue(parser.currentProcedure.args.size() == 2);
+        assertTrue(parser.currentProcedure.args.containsKey("x"));
+        assertTrue(parser.currentProcedure.args.containsKey("y"));
+        assertEquals(parser.currentProcedure.args.get("x").register, "r24");
+        assertEquals(parser.currentProcedure.args.get("y").register, "r22");
+        parser.parseLine(".endproc ; my_proc");
+        assertTrue(parser.currentProcedure == null);
     }
 
 }

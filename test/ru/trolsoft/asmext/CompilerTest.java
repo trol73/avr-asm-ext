@@ -92,6 +92,12 @@ class CompilerTest {
         parser.procedures.put(proc.name, proc);
         testLine("rcall my_proc (10) // comment", "ldi\tr24, 10\t ; x = 10\nrcall\tmy_proc");
         testLine("rcall my_proc (xl)", "mov\tr24, xl\t ; x = xl\nrcall\tmy_proc");
+
+        parser.parseLine(".extern ext_proc (var: r24)");
+        testLine("rcall ext_proc (r1)", "mov\tr24, r1\t ; var = r1\nrcall\text_proc");
+
+        parser.parseLine(".extern ext_var : byte");
+        testLine("rcall ext_proc (ext_var)", "lds\tr24, ext_var\t ; var = ext_var\nrcall\text_proc");
     }
 
 }

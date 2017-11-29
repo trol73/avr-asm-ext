@@ -31,6 +31,8 @@ class ParserUtilsTest {
         assertTrue(isRegister("r0"));
         assertTrue(isRegister("r31"));
         assertTrue(isRegister("R5"));
+        assertTrue(isRegister("zl"));
+        assertTrue(isRegister("YH"));
         assertFalse(isRegister("r32"));
         assertFalse(isRegister("r"));
 
@@ -55,6 +57,8 @@ class ParserUtilsTest {
         assertFalse(isNumber("ab"));
         assertFalse(isNumber("0xG"));
         assertFalse(isNumber("0b020"));
+        assertFalse(isNumber("-0b020"));
+        assertFalse(isNumber("-0b101b"));
 
         assertTrue(isConstExpression("1+2"));
         assertTrue(isConstExpression("(1 + 2)"));
@@ -65,6 +69,9 @@ class ParserUtilsTest {
         assertFalse(isConstExpression(")2*2("));
         assertFalse(isConstExpression("2*2("));
         assertFalse(isConstExpression("2*2)"));
+        assertFalse(isConstExpression("(2+2)("));
+        assertFalse(isConstExpression("2+"));
+        assertFalse(isConstExpression("(2+)"));
     }
 
     @Test

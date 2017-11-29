@@ -54,6 +54,9 @@ class ExpressionsCompilerTest {
         test(ec, ta("Y", "\t", "-=", "2"), "sbiw\tYL, 2");
         test(ec, ta("Z", "\t", "+=", "10"), "adiw\tZL, 10");
         test(ec, ta("Z", "\t", "+=", "1", "+", "1"), "adiw\tZL, (1+1)");
+        test(ec, ta("Z", "\t", "+=", "(", "1", "+", "1", ")"), "adiw\tZL, (1+1)");
+        test(ec, ta("X", "\t", "+=", "2", "+", "1"), "adiw\tXL, (2+1)");
+//        test(ec, ta("Z", "\t", "+=", "r21", ".", "r20"), "add\tZL, r24\nadc\tZH, r21");
     }
 
 
@@ -70,7 +73,7 @@ class ExpressionsCompilerTest {
 
         test(ec, ta("r24", "=", "r24", "+", "r2", "+", "r1"), "add\tr24, r2\nadd\tr24, r1");
         test(ec, ta("r24", "+=", "r2", "+", "r1"), "add\tr24, r2\nadd\tr24, r1");
-        //width = width + r24 + delta	; TODO +=
+        test(ec, ta("r24", "+", "=", "r2", "+", "r1"), "add\tr24, r2\nadd\tr24, r1");
     }
 
 
