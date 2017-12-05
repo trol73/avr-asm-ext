@@ -363,7 +363,7 @@ class Compiler {
                     return;
                 }
             } catch (ExpressionsCompiler.CompileException e) {
-                throw new SyntaxException(e.getMessage() != null ? e.getMessage() : "expression error");
+                throw new SyntaxException(e.getMessage() != null ? e.getMessage() : "expression error", e);
             }
         }
         for (String token : tokens) {

@@ -7,9 +7,9 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-public class ParserUtils {
+class ParserUtils {
 
-    public static boolean isValidName(String name) {
+    static boolean isValidName(String name) {
         if (name == null || name.isEmpty()) {
             return false;
         }
@@ -28,6 +28,10 @@ public class ParserUtils {
 
     private static boolean isDigitChar(char c) {
         return c >= '0' && c <= '9';
+    }
+
+    private static boolean isHexChar(char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
     }
 
     private static boolean isLetter(char c) {
@@ -78,6 +82,15 @@ public class ParserUtils {
         return s != null && s.startsWith("(") && s.endsWith(")");
     }
 
+    static String wrapToBrackets(String expr) {
+        if (!isNumber(expr) && !isInBrackets(expr)) {
+            return  "(" + expr + ")";
+        }
+        return expr;
+    }
+
+
+
     static int getTypeSize(String type) {
         switch (type) {
             case "byte":
@@ -97,8 +110,25 @@ public class ParserUtils {
         }
         int bc = 0;
         char last = ' ';
-        for (int i = 0; i < s.length(); i++) {
+        boolean isHex = false;
+        final int len = s.length();
+        for (int i = 0; i < len; i++) {
             char c = s.charAt(i);
+            if ((c == 'b' || c == 'B') && i > 0 && i < len-1) {
+                if (s.charAt(i-1) == '0' && isDigitChar(s.charAt(i+1))) {
+                    continue;
+                }
+            }
+            if ((c == 'x' || c == 'X') && i > 0 && i < len-1) {
+                if (s.charAt(i-1) == '0' && isHexChar(s.charAt(i+1))) {
+                    isHex = true;
+                    continue;
+                }
+            }
+            if (isHex && isHexChar(c)) {
+                continue;
+            }
+            isHex = false;
             if (!isDigitChar(c) && " \t+-*/()".indexOf(c) < 0) {
                 return false;
             }
@@ -165,5 +195,6 @@ public class ParserUtils {
             removeEmptyTokens(tokens);
         }
     }
+
 
 }

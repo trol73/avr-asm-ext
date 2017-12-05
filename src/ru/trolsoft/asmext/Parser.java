@@ -11,10 +11,17 @@ class Parser {
     private final Compiler compiler = new Compiler(this);
     Map<String, Procedure> procedures = new HashMap<>();
     Map<String, Variable> variables = new HashMap<>();
+    Map<String, Constant> constants = new HashMap<>();
     Stack<Block> blocks = new Stack<>();
+    boolean gcc;
 
     Parser() {
 
+    }
+
+    Parser(boolean gcc) {
+        this();
+        this.gcc = gcc;
     }
 
 
@@ -54,17 +61,22 @@ class Parser {
         } else if (trimLine.startsWith("@") && trimLine.contains(":") && currentProcedure != null) {
             localLabel(trimLine.substring(1, trimLine.length() - 1).trim());
         } else if (checkDirective(trimLine, ".loop")) {
-            startLoop(line, trimLine.substring(".loop".length()).trim());
+            processStartLoop(line, trimLine.substring(".loop".length()).trim());
         } else if (checkDirective(trimLine, ".endloop")) {
-            endLoop(line, trimLine.substring(".endloop".length()).trim());
+            processEndLoop(line, trimLine.substring(".endloop".length()).trim());
         } else if (checkDirective(trimLine, ".extern")) {
-            extern(line, trimLine.substring(".extern".length()).trim());
+            processExtern(line, trimLine.substring(".extern".length()).trim());
+        } else if (checkDirective(trimLine, ".equ")) {
+            processEqu(line, trimLine.substring(".equ".length()).trim());
+        } else if (checkDirective(trimLine, "#define")) {
+            processDefine(line, trimLine.substring("#define".length()).trim());
         } else {
             processLine(line);
         }
 
 
     }
+
 
     private void localLabel(String label) {
         output.add(resolveLocalLabel(label) + ":");
@@ -180,7 +192,7 @@ class Parser {
         currentProcedure = null;
     }
 
-    private void startLoop(String line, String args) throws SyntaxException {
+    private void processStartLoop(String line, String args) throws SyntaxException {
         if (args.endsWith(":")) {
             args = args.substring(0, args.length()-1).trim();
         }
@@ -248,7 +260,7 @@ class Parser {
         return sb;
     }
 
-    private void endLoop(String line, String empty) throws SyntaxException {
+    private void processEndLoop(String line, String empty) throws SyntaxException {
         if (!empty.isEmpty()) {
             error("extra characters in line");
         }
@@ -266,7 +278,7 @@ class Parser {
     }
 
 
-    private void extern(String line, String args) throws SyntaxException {
+    private void processExtern(String line, String args) throws SyntaxException {
         // check procedure
         int indx = args.indexOf('(');
         if (indx > 0) {
@@ -317,6 +329,35 @@ class Parser {
         output.add(line);
     }
 
+    private void processEqu(String line, String args) throws SyntaxException {
+        String split[] = args.split("=");
+        if (split.length > 2) {
+            error("wrong expression");
+        }
+        String name = split[0].trim();
+        String value = split.length > 1 ? split[1].trim() : null;
+        Constant c = new Constant(name, value, Constant.Type.EQU);
+        if (currentProcedure != null) {
+            currentProcedure.consts.put(name, c);
+        } else {
+            constants.put(name, c);
+        }
+        if (!gcc) {
+            output.add(line);
+        }
+    }
+
+
+    private void processDefine(String line, String args) {
+        String split[] = splitToTokens(args);
+        if (split.length >= 1) {
+            String name = split[0];
+            String value = args.substring(name.length()).trim();
+            Constant c = new Constant(name, value, Constant.Type.DEFINE);
+            constants.put(name, c);
+        }
+        output.add(line);
+    }
 
 
     private void procArgs(String args) throws SyntaxException {
@@ -400,7 +441,68 @@ class Parser {
         return output;
     }
 
-    public Variable getVariable(String name) {
+    Variable getVariable(String name) {
         return variables.get(name);
+    }
+
+    boolean isConstant(String name) {
+        return constants.containsKey(name) || (currentProcedure != null && currentProcedure.hasConst(name));
+    }
+
+    Constant getConstant(String name) {
+        if (currentProcedure != null && currentProcedure.hasConst(name)) {
+            return currentProcedure.getConst(name);
+        } else {
+            return constants.get(name);
+        }
+    }
+
+    String makeConstExpression(Constant constant) {
+        if (!gcc || constant.type == Constant.Type.DEFINE) {
+            return constant.name;
+        }
+        String[] tokens = splitToTokens(constant.value);
+        StringBuilder result = new StringBuilder();
+        for (String token : tokens) {
+            if (isConstant(token)) {
+                Constant c = getConstant(token);
+                String sc = makeConstExpression(c);
+                result.append(ParserUtils.wrapToBrackets(sc));
+            } else {
+                result.append(token);
+            }
+        }
+        return ParserUtils.wrapToBrackets(result.toString());
+    }
+
+    String makeConstExpression(String name) {
+        Constant c = getConstant(name);
+        return makeConstExpression(c);
+    }
+
+    boolean isConstExpression(String expr) {
+        if (ParserUtils.isConstExpression(expr)) {
+            return true;
+        }
+        String[] tokens = splitToTokens(expr);
+        StringBuilder builder = new StringBuilder();
+        for (String s : tokens) {
+            if (isConstant(s)) {
+                s = makeConstExpression(s);
+            }
+            builder.append(s);
+        }
+        return ParserUtils.isConstExpression(builder.toString());
+    }
+
+    boolean isConstExpressionTokens(List<String> tokens) {
+        StringBuilder builder = new StringBuilder();
+        for (String s : tokens) {
+            if (isConstant(s)) {
+                s = makeConstExpression(s);
+            }
+            builder.append(s);
+        }
+        return ParserUtils.isConstExpression(builder.toString());
     }
 }

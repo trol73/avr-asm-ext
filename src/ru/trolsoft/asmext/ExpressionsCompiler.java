@@ -2,6 +2,7 @@ package ru.trolsoft.asmext;
 
 import java.util.ArrayList;
 import java.util.List;
+import static ru.trolsoft.asmext.ParserUtils.wrapToBrackets;
 
 class ExpressionsCompiler {
 
@@ -82,12 +83,31 @@ class ExpressionsCompiler {
         return false;
     }
 
+    private String mergeTokensInList(List<String> tokens) {
+        String result;
+        if (tokens.size() > 1 && isConstExpressionTokens(tokens)) {
+            StringBuilder builder = new StringBuilder();
+            for (String s : tokens) {
+                if (parser.isConstant(s)) {
+                    builder.append(parser.makeConstExpression(s));
+                } else {
+                    builder.append(s);
+                }
+            }
+            result = builder.toString();
+            tokens.clear();
+            tokens.add(result);
+        } else {
+            result = tokens.get(0);
+        }
+        return result;
+    }
 
     private void moveToReg(String firstSpaces, String destReg, List<String> tokens, StringBuilder out) throws CompileException {
         if (tokens.isEmpty()) {
             throw new CompileException("empty expression");
         }
-        String firstArg = tokens.get(0);
+        String firstArg = mergeTokensInList(tokens);
         if (ParserUtils.isRegister(firstArg)) {
             if (!firstArg.equalsIgnoreCase(destReg)) {
                 addInstruction(firstSpaces, "mov", destReg, firstArg, out);
@@ -95,8 +115,10 @@ class ExpressionsCompiler {
         } else {
             // x = -3
             // x = -x
+            // x = abc
+            // x = var
             int val;
-            if ("-".equals(firstArg) && tokens.size() > 1) {
+            if ("-".equals(firstArg) && tokens.size() > 1) {    // x = -y
                 String secondArg = tokens.get(1);
                 // x = -y
                 if (ParserUtils.isRegister(secondArg)) {
@@ -108,10 +130,14 @@ class ExpressionsCompiler {
                     }
                 } else {
                     // x = -123
-                    addInstruction(firstSpaces, "ldi", destReg, "-"+wrapToBrackets(secondArg), out);
+                    if (!isConstExpression(secondArg) && !parser.isConstant(secondArg)) {
+                        throw new CompileException("unexpected expression: " + secondArg);
+                    }
+                    String s = parser.isConstant(secondArg) ? parser.makeConstExpression(secondArg) : secondArg;
+                    addInstruction(firstSpaces, "ldi", destReg, "-"+wrapToBrackets(s), out);
                 }
                 tokens.remove(0);
-            } else {
+            } else {    // x = const | var | expression
                 try {
                     val = ParserUtils.parseValue(firstArg);
                 } catch (NumberFormatException e) {
@@ -124,9 +150,22 @@ class ExpressionsCompiler {
                         int size = getVarSize(firstArg);
                         if (size == 1) {
                             addInstruction(firstSpaces, "lds", destReg, firstArg, out);
+                        } else {
+                            throw new CompileException("unsupported expression");
                         }
                     } else {
-                        addInstruction(firstSpaces, "ldi", destReg, firstArg, out);
+                        if (parser.isConstant(firstArg)) {
+                            Constant c = parser.getConstant(firstArg);
+                            String right = parser.makeConstExpression(c);
+//                                    parser.gcc && c.type == Constant.Type.EQU ? c.value : firstArg;
+ //                           right = parser.isConstant(right) ? parser.makeConstExpression(secondArg) : secondArg;
+
+                            addInstruction(firstSpaces, "ldi", destReg, right, out);
+                        } else if (isConstExpression(firstArg)) {
+                            addInstruction(firstSpaces, "ldi", destReg, firstArg, out);
+                        } else {
+                            throw new CompileException("unexpected expression: " + firstArg);
+                        }
                     }
                 }
             }
@@ -135,21 +174,37 @@ class ExpressionsCompiler {
             return;
         }
         tokens.remove(0);
+
+
         if (tokens.size() % 2 != 0) {
             throw new CompileException();
         }
+
+        // tyy to combine all tokens in line
+        String firstOperation = tokens.get(0);
+        mergeTokensInList(tokens);
+        if (tokens.size() == 1) {
+            String expr = tokens.get(0).substring(firstOperation.length());
+            tokens.clear();
+            tokens.add(firstOperation);
+            tokens.add(expr);
+        }
+
         for (int i = 0; i < tokens.size()/2; i++) {
             String operation = tokens.get(i*2);
             String arg = tokens.get(i*2+1);
             switch (operation) {
                 case "+":
-                    if (ParserUtils.isConstExpression(arg)) {
+                    if (isConstExpression(arg)) {
                         Integer val = ParserUtils.isNumber(arg) ? ParserUtils.parseValue(arg) : null;
                         if (val != null && val == 1) {
                             addInstruction(firstSpaces, "inc", destReg, null, out);
                         } else {
                             addInstruction(firstSpaces, "subi", destReg, "-" + wrapToBrackets(arg), out);
                         }
+                    } else if (parser.isConstant(arg)) {
+                        String s = parser.makeConstExpression(arg);
+                        addInstruction(firstSpaces, "subi", destReg, "-" + wrapToBrackets(s), out);
                     } else if (ParserUtils.isRegister(arg)) {
                         addInstruction(firstSpaces, "add", destReg, arg, out);
                     } else {
@@ -157,7 +212,7 @@ class ExpressionsCompiler {
                     }
                     break;
                 case "-":
-                    if (ParserUtils.isConstExpression(arg)) {
+                    if (isConstExpression(arg)) {
                         Integer val = ParserUtils.isNumber(arg) ? ParserUtils.parseValue(arg) : null;
                         if (val != null && val == 1) {
                             addInstruction(firstSpaces, "dec", destReg, null, out);
@@ -176,6 +231,7 @@ class ExpressionsCompiler {
             }
         }
     }
+
 
     private void moveToVar(String firstSpace, String varName, List<String> syntaxTokens, StringBuilder out) throws CompileException {
         if (syntaxTokens.size() < 3 || !"=".equals(syntaxTokens.get(1))) {
@@ -232,6 +288,9 @@ class ExpressionsCompiler {
             int groupSize = syntaxTokens.size()/2 + 1;
             boolean isNumber = ParserUtils.isNumber(src);
             int val = isNumber ? ParserUtils.parseValue(src) : -1;
+            if (!isNumber && !isConstExpression(src) && !parser.isConstant(src)) {
+                throw new CompileException("unexpected expression: " + src);
+            }
             for (int i = 0; i < groupSize; i++) {
                 String reg = syntaxTokens.get(i*2);
                 String v;
@@ -266,9 +325,13 @@ class ExpressionsCompiler {
             addInstruction(firstSpace, instruction, destReg, argument, out);
         } else if (isPair(destReg)) {
             String instruction = "+=".equals(operation) ? "adiw" : "sbiw";
-            argument = wrapToBrackets(argument);
-            addInstruction(firstSpace, instruction, destReg + "L", argument, out);
-        } else if (ParserUtils.isConstExpression(argument)) {
+            if (isConstExpression(argument) || parser.isConstant(argument)) {
+                argument = wrapToBrackets(argument);
+                addInstruction(firstSpace, instruction, destReg + "L", argument, out);
+            } else {
+                throw new CompileException("unexpected expression: " + argument);
+            }
+        } else if (isConstExpression(argument)) {
             argument = wrapToBrackets(argument);
             if ("+=".equals(operation)) {
                 argument = "-" + argument;
@@ -278,14 +341,6 @@ class ExpressionsCompiler {
             throw new CompileException(" addReg " + destReg + ", " + argument);
         }
     }
-
-    private String wrapToBrackets(String expr) {
-        if (!ParserUtils.isNumber(expr) && !ParserUtils.isInBrackets(expr)) {
-            return  "(" + expr + ")";
-        }
-        return expr;
-    }
-
 
     private void addInstruction(String firstSpaces, String operation, String destReg, String argument, StringBuilder out) {
         out.append(firstSpaces);
@@ -324,5 +379,12 @@ class ExpressionsCompiler {
         return "X".equals(name) || "Y".equals(name) || "Z".equals(name);
     }
 
+    private boolean isConstExpression(String s) {
+        return parser.isConstExpression(s);
+    }
+
+    private boolean isConstExpressionTokens(List<String> list) {
+        return parser.isConstExpressionTokens(list);
+    }
 
 }
