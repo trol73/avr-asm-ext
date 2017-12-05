@@ -204,6 +204,77 @@ class ParserTest {
         assertEquals(parser.currentProcedure.args.get("y").register, "r22");
         parser.parseLine(".endproc ; my_proc");
         assertTrue(parser.currentProcedure == null);
+
+
+        parser = new Parser();
+        boolean error;
+        try {
+            parser.parseLine(".args x(r24), y(r22)");
+            error = false;
+        } catch (SyntaxException e) {
+            error = true;
+        }
+        assertTrue(error);
+    }
+
+    @Test
+    void testEqu() throws SyntaxException {
+        Parser parser = new Parser(false);
+        parser.parseLine(".equ abc = 123 ; comment");
+        assertTrue(parser.constants.containsKey("abc"));
+        assertEquals(parser.constants.get("abc").value, "123");
+        assertEquals(parser.constants.get("abc").type, Constant.Type.EQU);
+        assertTrue(parser.getOutput().size() == 1);
+        parser.parseLine("r0 = abc");
+        assertTrue(parser.getOutput().get(1).endsWith("ldi\tr0, abc"));
+
+        parser = new Parser();
+        parser.gcc = true;
+        parser.parseLine(".equ abc = 123 ; comment");
+        assertTrue(parser.constants.containsKey("abc"));
+        assertEquals(parser.constants.get("abc").value, "123");
+        assertEquals(parser.constants.get("abc").type, Constant.Type.EQU);
+        assertTrue(parser.getOutput().size() == 0);
+        parser.parseLine("r0 = abc");
+        assertTrue(parser.getOutput().get(0).endsWith("ldi\tr0, 123"));
+
+        parser.parseLine("#define CONST_X\t10");
+        assertTrue(parser.constants.containsKey("CONST_X"));
+        assertEquals(parser.constants.get("CONST_X").value, "10");
+        assertEquals(parser.constants.get("CONST_X").type, Constant.Type.DEFINE);
+
+        parser = new Parser();
+        parser.parseLine(".proc my_proc");
+        parser.parseLine(".equ local = 0x123");
+        assertTrue(parser.currentProcedure.hasConst("local"));
+        assertTrue(parser.isConstant("local"));
+        parser.parseLine(".endproc");
+        assertTrue(!parser.isConstant("local"));
+    }
+
+    @Test
+    void testNestedGccEqu() throws SyntaxException {
+        Parser parser = new Parser(true);
+        parser.parseLine(".equ io_offset = 0x23");
+        parser.parseLine(".equ porta = io_offset + 2");
+        parser.parseLine("r0 = porta");
+        assertTrue(parser.getOutput().get(0).endsWith("di\tr0, (0x23 + 2)"));
+
+        parser.parseLine(".equ portb = ((porta) + 1)");
+        parser.parseLine("r1 = portb");
+        assertTrue(parser.getOutput().get(1).endsWith("ldi\tr1, (((0x23 + 2)) + 1)"));
+
+        parser = new Parser(true);
+        parser.parseLine(".equ a = 12");
+        parser.parseLine(".equ b = a + 7");
+        parser.parseLine("r20 = (a + b)");
+        assertTrue(parser.getOutput().get(0).contains("ldi\tr20, (12+(12 + 7))"));
+
+        parser = new Parser(true);
+        parser.parseLine(".equ a = 12");
+        parser.parseLine(".equ b = a + 7");
+        parser.parseLine("r20 = r1 + (a - b)");
+        assertTrue(parser.getOutput().get(0).contains("subi\tr20, -(12-(12 + 7))"));
     }
 
 }

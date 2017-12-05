@@ -72,6 +72,10 @@ class ParserUtilsTest {
         assertFalse(isConstExpression("(2+2)("));
         assertFalse(isConstExpression("2+"));
         assertFalse(isConstExpression("(2+)"));
+
+        assertTrue(isConstExpression("(0xABC)"));
+        assertTrue(isConstExpression("0b10100110 + 123"));
+        assertTrue(isConstExpression("(0xABC)-1"));
     }
 
     @Test
