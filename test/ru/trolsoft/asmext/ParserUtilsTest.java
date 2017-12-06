@@ -80,10 +80,11 @@ class ParserUtilsTest {
 
     @Test
     void testVars() {
-        assertTrue(getTypeSize("byte") == 1);
-        assertTrue(getTypeSize("word") == 2);
-        assertTrue(getTypeSize("dword") == 4);
-        assertTrue(getTypeSize("unknown") == -1);
+        assertTrue(getVarType("byte") == Variable.Type.BYTE);
+        assertTrue(getVarType("word") == Variable.Type.WORD);
+        assertTrue(getVarType("dword") == Variable.Type.DWORD);
+        assertTrue(getVarType("ptr") == Variable.Type.POINTER);
+        assertTrue(getVarType("unknown") == null);
     }
 
     @Test

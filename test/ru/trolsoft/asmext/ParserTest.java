@@ -168,11 +168,11 @@ class ParserTest {
 
         parser.parseLine(".extern cmd_color : word");
         assertTrue(parser.variables.size() == 1);
-        assertTrue(parser.variables.get("cmd_color").size == 2);
+        assertTrue(parser.variables.get("cmd_color").getSize() == 2);
 
         parser.parseLine(".extern cmd_x : byte");
         assertTrue(parser.variables.size() == 2);
-        assertTrue(parser.variables.get("cmd_x").size == 1);
+        assertTrue(parser.variables.get("cmd_x").getSize() == 1);
     }
 
     @Test

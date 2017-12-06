@@ -109,6 +109,9 @@ class Parser {
 
 
     String[] splitToTokens(String line) {
+        if (line == null) {
+            return new String[0];
+        }
         StringTokenizer tokenizer = new StringTokenizer(line, " \t,.+-*/=():", true);
         List<String> result = new ArrayList<>();
         boolean commentStarted = false;
@@ -317,8 +320,8 @@ class Parser {
             if (variables.containsKey(varName)) {
                 error("Variable already defined: " + varName);
             }
-            int type = ParserUtils.getTypeSize(varType);
-            if (type < 0) {
+            Variable.Type type = ParserUtils.getVarType(varType);
+            if (type == null) {
                 error("Invalid variable type: " + varType);
             }
             Variable var = new Variable(varName, type);

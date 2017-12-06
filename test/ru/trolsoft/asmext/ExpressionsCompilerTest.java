@@ -84,13 +84,38 @@ class ExpressionsCompilerTest {
         Parser parser = new Parser();
         ExpressionsCompiler ec = new ExpressionsCompiler(parser);
 
-        parser.variables.put("var_b", new Variable("var_b", 1));
-        parser.variables.put("var_w", new Variable("var_w", 2));
+        parser.variables.put("var_b", new Variable("var_b", Variable.Type.BYTE));
+        parser.variables.put("var_w", new Variable("var_w", Variable.Type.WORD));
 
         test(ec, ta("var_b", "=", "r0"), "sts\tvar_b, r0");
         test(ec, ta("var_w", "=", "r0", ".", "r1"), "sts\tvar_w+1, r0\nsts\tvar_w, r1");
         test(ec, ta("r0", "=", "var_b"), "lds\tr0, var_b");
         test(ec, ta("r0", ".", "r1", "=", "var_w"), "lds\tr0, var_w+1\nlds\tr1, var_w");
+    }
+
+    @Test
+    void testPairs() throws CompileException {
+        Parser parser = new Parser();
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+
+        test(ec, ta("r23", ".", "r24", "+=", "10"), "adiw\tr24, 10");
+        test(ec, ta("r23", ".", "r24", "-=", "10"), "sbiw\tr24, 10");
+
+        boolean error;
+        try {
+            ec.compile(ta("r23", ".", "r22", "10"), new StringBuilder());
+            error = false;
+        } catch (CompileException e) {
+            error = true;
+        }
+        assertTrue(error);
+        try {
+            ec.compile(ta("r23", ".", "r22", "unknown"), new StringBuilder());
+            error = false;
+        } catch (CompileException e) {
+            error = true;
+        }
+        assertTrue(error);
     }
 
     @Test

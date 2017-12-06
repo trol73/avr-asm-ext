@@ -3,8 +3,6 @@ package ru.trolsoft.asmext;
 import ru.trolsoft.avr.Instructions;
 import ru.trolsoft.avr.Registers;
 
-import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 
 class ParserUtils {
@@ -91,16 +89,18 @@ class ParserUtils {
 
 
 
-    static int getTypeSize(String type) {
+    static Variable.Type getVarType(String type) {
         switch (type) {
             case "byte":
-                return 1;
+                return Variable.Type.BYTE;
             case "word":
-                return 2;
+                return Variable.Type.WORD;
             case "dword":
-                return 4;
+                return Variable.Type.DWORD;
+            case "ptr":
+                return Variable.Type.POINTER;
             default:
-                return -1;
+                return null;
         }
     }
 

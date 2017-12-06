@@ -2,6 +2,8 @@ package ru.trolsoft.asmext;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import static ru.trolsoft.asmext.ParserUtils.isRegister;
 import static ru.trolsoft.asmext.ParserUtils.wrapToBrackets;
 
 class ExpressionsCompiler {
@@ -267,45 +269,94 @@ class ExpressionsCompiler {
         if (syntaxTokens.size() < 3) {
             return false;
         }
-        //String operation = syntaxTokens.get(syntaxTokens.size()-2);
-        String src = syntaxTokens.get(syntaxTokens.size()-1);
-        syntaxTokens.remove(syntaxTokens.size()-1);
-        syntaxTokens.remove(syntaxTokens.size()-1);
+        String operator = null;
+        StringBuilder rightBuilder = new StringBuilder();
+        int operatorIndex = 1;
+        for (String s : syntaxTokens) {
+            if (operator == null && ".".equals(s) || isRegister(s)) {
+                operatorIndex++;
+                continue;
+            }
+            if (operator == null) {
+                operator = s;
+            } else {
+                rightBuilder.append(s);
+            }
+        }
+        if (operatorIndex < 0) {
+            throw new CompileException("wrong expression");
+        }
+        while (syntaxTokens.size() >= operatorIndex) {
+            syntaxTokens.remove(syntaxTokens.size()-1);
+        }
+        String right = rightBuilder.toString();
         if (!checkRegisterGroup(syntaxTokens)) {
             throw new CompileException("wrong left side expression");
         }
-        if (isVar(src)) {
-            int varSize = getVarSize(src);
+        if (isVar(right)) {
+            if (!"=".equals(operator)) {
+                throw new CompileException("unsupported operation: " + operator);
+            }
+            int varSize = getVarSize(right);
             if (syntaxTokens.size() != varSize*2 - 1) {
                 throw new CompileException("wrong operation, sizes mismatch");
             }
             for (int i = 0; i < varSize; i++) {
-                String varAddr = i < varSize - 1 ? src + "+" + (varSize - i - 1) : src;
+                String varAddr = i < varSize - 1 ? right + "+" + (varSize - i - 1) : right;
                 String reg = syntaxTokens.get(i*2);
                 addInstruction(firstSpace, "lds", reg, varAddr, out);
             }
         } else {
-            int groupSize = syntaxTokens.size()/2 + 1;
-            boolean isNumber = ParserUtils.isNumber(src);
-            int val = isNumber ? ParserUtils.parseValue(src) : -1;
-            if (!isNumber && !isConstExpression(src) && !parser.isConstant(src)) {
-                throw new CompileException("unexpected expression: " + src);
+            if (!isConstExpression(right) && !parser.isConstant(right)) {
+                throw new CompileException("unexpected expression: " + right);
             }
-            for (int i = 0; i < groupSize; i++) {
-                String reg = syntaxTokens.get(i*2);
-                String v;
-                if (isNumber) {
-                    int part = (val >> (8*(groupSize-i-1))) & 0xff;
-                    v = "0x" + Integer.toHexString(part);
-                } else {
-                    v = "(" + src + " >> " + 8*(groupSize-i-1) + ") & 0xff";
-                }
-                addInstruction(firstSpace, "ldi", reg, v, out);
+            if ("=".equals(operator)) {
+                groupAssignConst(firstSpace, syntaxTokens, right, out);
+            } else if ("+=".equals(operator) || "-=".equals(operator)) {
+                groupAddSub(firstSpace, syntaxTokens, operator, right, out);
             }
         }
         return true;
     }
 
+
+    private void groupAssignConst(String firstSpace, List<String> src, String right, StringBuilder out) {
+        int groupSize = src.size();
+        boolean isNumber = ParserUtils.isNumber(right);
+        int val = isNumber ? ParserUtils.parseValue(right) : -1;
+        for (int i = 0; i < groupSize; i++) {
+            String reg = src.get(i * 2);
+            String v;
+            if (isNumber) {
+                int part = (val >> (8 * (groupSize - i - 1))) & 0xff;
+                v = "0x" + Integer.toHexString(part);
+            } else {
+                v = "(" + right + " >> " + 8 * (groupSize - i - 1) + ") & 0xff";
+            }
+            addInstruction(firstSpace, "ldi", reg, v, out);
+        }
+
+    }
+
+    private void groupAddSub(String firstSpace, List<String> src, String operator, String right, StringBuilder out) throws CompileException {
+        int groupSize = src.size();
+        if (groupSize == 3) {
+            String r1 = src.get(0).toLowerCase();
+            String r2 = src.get(2).toLowerCase();
+            if (isRegister(r1) && isRegister(r2) && ".".equals(src.get(1)) && r1.startsWith("r") && r2.startsWith("r")) {
+                try {
+                    int n1 = Integer.parseInt(r1.substring(1));
+                    int n2 = Integer.parseInt(r2.substring(1));
+                    if (n1 == n2 - 1) {
+                        String instruction = "+=".equals(operator) ? "adiw" : "sbiw";
+                        addInstruction(firstSpace, instruction, r2, right, out);
+                        return;
+                    }
+                } catch (Exception ignore) {}
+            }
+        }
+        throw new CompileException("unsupported operation");
+    }
 
 
 
@@ -360,7 +411,7 @@ class ExpressionsCompiler {
 
     private int getVarSize(String name) {
         Variable var = parser != null ? parser.getVariable(name) : null;
-        return var != null ? var.size : -1;
+        return var != null ? var.getSize() : -1;
     }
 
     private boolean checkRegisterGroup(List<String> tokens) {

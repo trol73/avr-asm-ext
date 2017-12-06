@@ -14,7 +14,7 @@ public class Main {
         }
         String src = args[0];
         String out = args[1];
-        Parser parser = new Parser();
+        Parser parser = new Parser(src.toLowerCase().endsWith(".s"));
         File srcFile = new File(src);
         if (!srcFile.exists()) {
             System.out.println("File not found: " + src);
