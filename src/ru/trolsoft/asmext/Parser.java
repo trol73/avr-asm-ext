@@ -1,6 +1,8 @@
 package ru.trolsoft.asmext;
 
 
+import ru.trolsoft.asmext.data.*;
+
 import java.io.*;
 import java.util.*;
 
@@ -12,8 +14,12 @@ class Parser {
     Map<String, Procedure> procedures = new HashMap<>();
     Map<String, Variable> variables = new HashMap<>();
     Map<String, Constant> constants = new HashMap<>();
+    Map<String, Alias> globalAliases = new HashMap<>();
+    Map<String, Label> dataLabels = new HashMap<>();
+    Map<String, Label> codeLabels = new HashMap<>();
     Stack<Block> blocks = new Stack<>();
     boolean gcc;
+    private Segment currentSegment;
 
     Parser() {
 
@@ -27,11 +33,15 @@ class Parser {
 
     void parse(File file) throws IOException, SyntaxException {
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            preload(reader);
+        }
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
             parse(reader);
         }
     }
 
     private void parse(BufferedReader reader) throws IOException, SyntaxException {
+        lineNumber = 0;
         while (true) {
             String line = reader.readLine();
             if (line == null) {
@@ -44,10 +54,14 @@ class Parser {
     void parseLine(String line) throws SyntaxException {
         lineNumber++;
         String trimLine = removeCommentsAndSpaces(line);
+        String trimLower = trimLine.toLowerCase();
         if (trimLine.isEmpty()) {
             output.add(line);
         } else if (checkDirective(trimLine, ".use")) {
             use(trimLine.substring(".use".length()).trim());
+            output.add(";" + line);
+        } else if (checkDirective(trimLower, ".def")) {
+            def(trimLine.substring(".def".length()).trim());
             output.add(";" + line);
         } else if (checkDirective(trimLine, ".proc")) {
             startProc(trimLine.substring(".proc".length()).trim());
@@ -73,7 +87,42 @@ class Parser {
         } else {
             processLine(line);
         }
+    }
 
+    void preload(BufferedReader reader) throws IOException {
+        if (gcc) {
+            currentSegment = Segment.CODE;
+        }
+        while (true) {
+            String line = reader.readLine();
+            if (line == null) {
+                break;
+            }
+            preloadLine(line);
+        }
+    }
+
+    void preloadLine(String line) {
+        lineNumber++;
+        String trimLine = removeCommentsAndSpaces(line);
+        if (!gcc) {
+            if (".dseg".equalsIgnoreCase(trimLine)) {
+                currentSegment = Segment.DATA;
+                return;
+            } else if (".cseg".equalsIgnoreCase(trimLine)) {
+                currentSegment = Segment.CODE;
+                return;
+            }
+        }
+        if (trimLine.endsWith(":") && !trimLine.startsWith(".") && !trimLine.startsWith("@")) {
+            String labelName = trimLine.substring(0, trimLine.length()-1);
+            Label label = new Label(labelName, lineNumber);
+            if (currentSegment == Segment.DATA) {
+                dataLabels.put(labelName, label);
+            } else {
+                codeLabels.put(labelName, label);
+            }
+        }
 
     }
 
@@ -108,12 +157,13 @@ class Parser {
     }
 
 
-    String[] splitToTokens(String line) {
-        if (line == null) {
-            return new String[0];
-        }
-        StringTokenizer tokenizer = new StringTokenizer(line, " \t,.+-*/=():", true);
+    List<String> splitToTokensList(String line, boolean removeEmpty) {
         List<String> result = new ArrayList<>();
+        if (line == null) {
+            return result;
+        }
+        final String delim = " \t,.+-*/=():";
+        StringTokenizer tokenizer = new StringTokenizer(line, delim, true);
         boolean commentStarted = false;
         while (tokenizer.hasMoreElements()) {
             String next = tokenizer.nextToken();
@@ -122,6 +172,17 @@ class Parser {
                 result.set(result.size()-1, prev + next);
                 continue;
             }
+
+            // ' ' and '\t' is char const
+            if ("'".equals(prev) && delim.contains(next) && next.length() == 1) {
+                result.set(result.size()-1, prev + next);
+                continue;
+            }
+            if (("'".equals(next)) && (prev != null && prev.startsWith("'") && prev.length() == 2) && delim.contains(prev.substring(1))) {
+                result.set(result.size()-1, prev + next);
+                continue;
+            }
+
             if (commentStarted) {
                 result.set(result.size()-1, prev + next);
                 continue;
@@ -135,20 +196,37 @@ class Parser {
             }
             result.add(next);
         }
-        String[] array = new String[result.size()];
-        return result.toArray(array);
+        if (removeEmpty) {
+            ParserUtils.removeEmptyTokens(result);
+        }
+        return result;
+    }
+
+    String[] splitToTokens(String line, boolean removeEmpty) {
+        List<String> list = splitToTokensList(line, removeEmpty);
+        String[] array = new String[list.size()];
+        return list.toArray(array);
+
+    }
+
+    String[] splitToTokens(String line) {
+        return splitToTokens(line, false);
     }
 
 
     private Alias resolveProcAlias(String aliasName) {
         if (currentProcedure == null) {
-            return null;
+            return globalAliases.get(aliasName);
         }
         Alias alias = currentProcedure.uses.get(aliasName);
         if (alias != null) {
             return alias;
         }
-        return currentProcedure.args.get(aliasName);
+        alias = currentProcedure.args.get(aliasName);
+        if (alias == null) {
+            alias = globalAliases.get(aliasName);
+        }
+        return alias;
     }
 
     private boolean checkDirective(String line, String directiveName) {
@@ -220,6 +298,10 @@ class Parser {
                 reg = resolve;
             }
         }
+        Alias alias = resolveProcAlias(reg);
+        if (alias != null) {
+            reg = alias.register;
+        }
         if (!ParserUtils.isRegister(reg)) {
             error("register or alias expected: " + reg);
         }
@@ -283,14 +365,14 @@ class Parser {
 
     private void processExtern(String line, String args) throws SyntaxException {
         // check procedure
-        int indx = args.indexOf('(');
-        if (indx > 0) {
-            String procArgs = args.substring(indx);
+        int index = args.indexOf('(');
+        if (index > 0) {
+            String procArgs = args.substring(index);
             if (!procArgs.endsWith(")")) {
                 error("') not found");
             }
             procArgs = procArgs.substring(1, procArgs.length()-1).trim();
-            String procName = args.substring(0, indx).trim();
+            String procName = args.substring(0, index).trim();
 
             String[] split = procArgs.split(",");
             Procedure proc = new Procedure(procName);
@@ -302,6 +384,9 @@ class Parser {
                 }
                 String name = nv[0].trim();
                 String reg = nv[1].trim();
+                if (globalAliases.containsKey(reg)) {
+                    reg = globalAliases.get(reg).register;
+                }
                 Alias alias = createAlias(name, reg);
                 if (proc.hasArg(name)) {
                     error("duplicate argument '" + name + "'");
@@ -309,24 +394,37 @@ class Parser {
                 proc.addArg(alias);
             } // for
             procedures.put(procName, proc);
-            output.add(".extern " + procName + "\t; " + procArgs);
+            if (gcc) {
+                output.add(".extern " + procName + "\t; " + procArgs);
+            }
             return;
         }
         // check variable
-        indx = args.indexOf(':');
-        if (indx > 0) {
-            String varName = args.substring(0, indx).trim();
-            String varType = args.substring(indx+1).trim().toLowerCase();
-            if (variables.containsKey(varName)) {
-                error("Variable already defined: " + varName);
+        index = args.indexOf(':');
+        if (index > 0) {
+            String varNames = args.substring(0, index).trim();
+            String varType = args.substring(index+1).trim().toLowerCase();
+            List<String> names = splitToTokensList(varNames, true);
+            for (String varName : names) {
+                if (",".equals( varName)) {
+                    continue;
+                }
+                if (!ParserUtils.isValidName(varName) || ParserUtils.isRegister(varName)) {
+                    error("Wrong name: " + varName);
+                }
+                if (variables.containsKey(varName)) {
+                    error("Variable already defined: " + varName);
+                }
+                Variable.Type type = ParserUtils.getVarType(varType);
+                if (type == null) {
+                    error("Invalid variable type: " + varType);
+                }
+                Variable var = new Variable(varName, type);
+                variables.put(varName, var);
+                if (gcc) {
+                    output.add(".extern " + varName + "\t; " + varType);
+                }
             }
-            Variable.Type type = ParserUtils.getVarType(varType);
-            if (type == null) {
-                error("Invalid variable type: " + varType);
-            }
-            Variable var = new Variable(varName, type);
-            variables.put(varName, var);
-            output.add(".extern " + varName + "\t; " + varType);
             return;
         }
         output.add(line);
@@ -376,6 +474,9 @@ class Parser {
             }
             String name = nv[0];
             String reg = nv[1].substring(0, nv[1].length()-1);
+            if (globalAliases.containsKey(reg)) {
+                reg = globalAliases.get(reg).register;
+            }
             Alias alias = createAlias(name, reg);
             if (currentProcedure.hasAlias(name)) {
                 error("alias '" + name + "' already defined for this procedure");
@@ -407,6 +508,39 @@ class Parser {
                     error("argument '" + aliasName + "' already defined for this procedure");
                 }
                 currentProcedure.addAlias(alias);
+            } else {
+                if (globalAliases.containsKey(aliasName)) {
+                    error("global alias '" + aliasName + "' already defined");
+                }
+                globalAliases.put(aliasName, alias);
+            }
+        }
+    }
+
+    private void def(String str) throws SyntaxException {
+        String uses[] = str.split(",");
+        for (String use : uses) {
+            use = use.trim();
+            String[] args = splitToTokens(use, true);//use.split("\\s+");
+            if (args.length != 3 || !args[1].toLowerCase().equals("=")) {
+                error("wrong .def syntax ");
+            }
+            String regName = args[2];
+            String aliasName = args[0];
+            Alias alias = createAlias(aliasName, regName);
+            if (currentProcedure != null) {
+                if (currentProcedure.hasAlias(aliasName)) {
+                    error("alias '" + aliasName + "' already defined for this procedure");
+                }
+                if (currentProcedure.hasArg(aliasName)) {
+                    error("argument '" + aliasName + "' already defined for this procedure");
+                }
+                currentProcedure.addAlias(alias);
+            } else {
+                if (globalAliases.containsKey(aliasName)) {
+                    error("global alias '" + aliasName + "' already defined");
+                }
+                globalAliases.put(aliasName, alias);
             }
         }
     }
@@ -430,7 +564,7 @@ class Parser {
     }
 
     private void checkRegister(String name) throws SyntaxException {
-        if (!ParserUtils.isRegister(name)) {
+        if (!ParserUtils.isRegister(name) && !globalAliases.containsKey(name)) {
             error("register expected: " + name);
         }
     }
@@ -445,7 +579,18 @@ class Parser {
     }
 
     Variable getVariable(String name) {
-        return variables.get(name);
+        Variable result = variables.get(name);
+        if (result == null) {
+            if (codeLabels.containsKey(name)) {
+                result = new Variable(name, Variable.Type.PRGPTR);
+                variables.put(name, result);
+            }
+//            else if (dataLabels.containsKey(name)) {
+//                result = new Variable(name, Variable.Type.POINTER);
+//                variables.put(name, result);
+//            }
+        }
+        return result;
     }
 
     boolean isConstant(String name) {

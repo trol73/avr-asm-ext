@@ -1,5 +1,6 @@
 package ru.trolsoft.asmext;
 
+import ru.trolsoft.asmext.data.Variable;
 import ru.trolsoft.avr.Instructions;
 import ru.trolsoft.avr.Registers;
 
@@ -38,6 +39,10 @@ class ParserUtils {
 
     static boolean isRegister(String name) {
         return Registers.isRegister(name);
+    }
+
+    static boolean isPair(String name) {
+        return Registers.isPair(name);
     }
 
     static boolean isInstruction(String name) {
@@ -99,6 +104,8 @@ class ParserUtils {
                 return Variable.Type.DWORD;
             case "ptr":
                 return Variable.Type.POINTER;
+            case "prgptr":
+                return Variable.Type.PRGPTR;
             default:
                 return null;
         }
@@ -114,6 +121,16 @@ class ParserUtils {
         final int len = s.length();
         for (int i = 0; i < len; i++) {
             char c = s.charAt(i);
+            if (c == '\'' && i > 1 && s.charAt(i-2) == '\'') {
+                isHex = false;
+                continue;
+            } else if (c == '\'' && i < len-2 && s.charAt(i+2) == '\'') {
+                isHex = false;
+                continue;
+            } else if (i > 0 && i < len-1 && s.charAt(i-1) == '\'' && s.charAt(i+1) == '\'') {
+                isHex = false;
+                continue;
+            }
             if ((c == 'b' || c == 'B') && i > 0 && i < len-1) {
                 if (s.charAt(i-1) == '0' && isDigitChar(s.charAt(i+1))) {
                     continue;
@@ -144,7 +161,7 @@ class ParserUtils {
                 last = c;
             }
         }
-        if ("+-*/".indexOf(last) >= 0) {
+        if ("+-*/'".indexOf(last) >= 0) {
             return false;
         }
         return bc == 0;

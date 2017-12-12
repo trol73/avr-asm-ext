@@ -1,6 +1,7 @@
 package ru.trolsoft.asmext;
 
 import org.junit.jupiter.api.Test;
+import ru.trolsoft.asmext.data.Variable;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -36,6 +37,13 @@ class ParserUtilsTest {
         assertFalse(isRegister("r32"));
         assertFalse(isRegister("r"));
 
+        assertTrue(isPair("X"));
+        assertTrue(isPair("Y"));
+        assertTrue(isPair("Z"));
+        assertFalse(isPair("x"));
+        assertFalse(isPair("r11"));
+        assertFalse(isPair("0"));
+
         assertTrue(isInstruction("mov"));
         assertFalse(isInstruction("movs"));
 
@@ -64,6 +72,7 @@ class ParserUtilsTest {
         assertTrue(isConstExpression("(1 + 2)"));
         assertTrue(isConstExpression("1 +\t2"));
         assertTrue(isConstExpression("2*2+4"));
+        assertTrue(isConstExpression("'x'"));
         assertFalse(isConstExpression("2*x"));
         assertFalse(isConstExpression("(2*2"));
         assertFalse(isConstExpression(")2*2("));
@@ -72,6 +81,10 @@ class ParserUtilsTest {
         assertFalse(isConstExpression("(2+2)("));
         assertFalse(isConstExpression("2+"));
         assertFalse(isConstExpression("(2+)"));
+        assertFalse(isConstExpression("'x"));
+        assertFalse(isConstExpression("x'"));
+        assertFalse(isConstExpression("''"));
+        assertFalse(isConstExpression("'ab'"));
 
         assertTrue(isConstExpression("(0xABC)"));
         assertTrue(isConstExpression("0b10100110 + 123"));
@@ -84,6 +97,7 @@ class ParserUtilsTest {
         assertTrue(getVarType("word") == Variable.Type.WORD);
         assertTrue(getVarType("dword") == Variable.Type.DWORD);
         assertTrue(getVarType("ptr") == Variable.Type.POINTER);
+        assertTrue(getVarType("prgptr") == Variable.Type.PRGPTR);
         assertTrue(getVarType("unknown") == null);
     }
 
@@ -121,7 +135,30 @@ class ParserUtilsTest {
         mergeTokens(tokens);
         assertTrue(tokens.size() == 1);
         assertEquals(tokens.get(0), "2*(5-1)*2");
+    }
 
+    @Test
+    void testBracketsUtils() {
+        assertTrue(isInBrackets("(1+1)"));
+        assertFalse(isInBrackets("(1+1"));
+        assertFalse(isInBrackets("1+1)"));
+        assertFalse(isInBrackets("1"));
+        assertFalse(isInBrackets("1+1"));
 
+        assertEquals(wrapToBrackets("1+1"), "(1+1)");
+    }
+
+    @Test
+    void testOperations() {
+        assertTrue(isSimpleMatchOperator("+"));
+        assertTrue(isSimpleMatchOperator("-"));
+        assertTrue(isSimpleMatchOperator("*"));
+        assertTrue(isSimpleMatchOperator("/"));
+        assertTrue(isSimpleMatchOperator(">>"));
+        assertTrue(isSimpleMatchOperator("<<"));
+
+        assertFalse(isSimpleMatchOperator("1"));
+        assertFalse(isSimpleMatchOperator("-1"));
+        assertFalse(isSimpleMatchOperator("+1"));
     }
 }

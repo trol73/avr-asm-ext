@@ -1,14 +1,15 @@
-package ru.trolsoft.asmext;
+package ru.trolsoft.asmext.data;
 
 public class Variable {
     public final String name;
-    final Type type;
+    public final Type type;
 
     public enum Type {
         BYTE(1),
         WORD(2),
         DWORD(4),
-        POINTER(2);
+        POINTER(2),
+        PRGPTR(2);
 
         int size;
         Type(int size) {
@@ -16,13 +17,17 @@ public class Variable {
         }
     }
 
-    Variable(String name, Type type) {
+    public Variable(String name, Type type) {
         this.name = name;
         this.type = type;
     }
 
-    int getSize() {
+    public int getSize() {
         return type.size;
+    }
+
+    public boolean isPointer() {
+        return type == Type.POINTER || type == Type.PRGPTR;
     }
 
     @Override

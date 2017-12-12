@@ -1,5 +1,10 @@
 package ru.trolsoft.asmext;
 
+import org.omg.CORBA.SystemException;
+import ru.trolsoft.asmext.data.NamedPair;
+import ru.trolsoft.asmext.data.Procedure;
+import ru.trolsoft.asmext.data.Variable;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.StringTokenizer;
@@ -21,7 +26,7 @@ class Compiler {
         String firstToken = null;
         for (String token : tokens) {
             if (!token.trim().isEmpty()) {
-                firstToken = token.toLowerCase();
+                firstToken = token;
                 break;
             }
         }
@@ -64,7 +69,6 @@ class Compiler {
         String argName = null;
         String argValue = "";
         Procedure procedure = null;
-
         for (String s : tokens) {
             if (s.trim().isEmpty() || ParserUtils.isComment(s)) {
                 continue;
@@ -270,17 +274,59 @@ class Compiler {
         if (tokens.size() < 8 || !"goto".equals(tokens.get(tokens.size()-2)) || !"(".equals(tokens.get(1)) || !")".equals(tokens.get(tokens.size()-3))) {
             return false;
         }
-        String reg = tokens.get(2);
+        int index = 2;
+        String reg = tokens.get(index++);
         if (!ParserUtils.isRegister(reg)) {
             throw new SyntaxException("Invalid expression");
         }
-        String operation = tokens.get(3);
-        String arg = tokens.get(4);
+        List<String> regs = new ArrayList<>();
+        regs.add(reg);
+        String next = tokens.get(index);
+        if (".".equals(next)) {
+            //regs = new ArrayList<>();
+            //regs.add(reg);
+            index++;
+            while (".".equals(next) || ParserUtils.isRegister(next)) {
+                if (!".".equals(next)) {
+                    regs.add(next);
+                }
+                next = tokens.get(index++);
+                if (index >= tokens.size()) {
+                    break;
+                }
+            }
+            index--;
+//        } else {
+//            regs = null;
+        }
+        String operation = tokens.get(index++);
+        String arg = tokens.get(index++);
+        List<String> args = new ArrayList<>();
+        args.add(arg);
+        next = tokens.get(index);
+        if (".".equals(next)) {
+            index++;
+            while (".".equals(next) || ParserUtils.isRegister(next)) {
+                if (!".".equals(next)) {
+                    args.add(next);
+                }
+                next = tokens.get(index++);
+                if (index >= tokens.size()) {
+                    break;
+                }
+            }
+            index--;
+        }
+        if (!")".equals(tokens.get(index))) {
+            throw new SyntaxException("Invalid expression");
+        }
+//System.out.println(regs + " , " + args + " " + operation);
         Integer argVal = ParserUtils.isNumber(arg) ? ParserUtils.parseValue(arg) : null;
         String firstSpaces = srcTokens.length > 0 && srcTokens[0].trim().isEmpty() ? srcTokens[0] : "";
         String label = tokens.get(tokens.size()-1);
         out.append("; ").append(src).append("\n");
         String jumpCmd;
+        //  BRCS = BRLO, BRCC = BRSH
         switch (operation) {
             case "==":
             case "!=":
@@ -288,7 +334,8 @@ class Compiler {
                 if (argVal != null && argVal == 0) {
                     out.append(firstSpaces).append("tst\t").append(reg).append('\n');
                 } else if (ParserUtils.isRegister(arg)) {
-                    out.append(firstSpaces).append("cp\t").append(reg).append(", ").append(arg).append('\n');
+                    addCompareInstruction(firstSpaces, regs, args, out);
+//                    out.append(firstSpaces).append("cp\t").append(reg).append(", ").append(arg).append('\n');
                 } else {
                     out.append(firstSpaces).append("cpi\t").append(reg).append(", ").append(arg).append('\n');
                 }
@@ -299,7 +346,8 @@ class Compiler {
                     out.append(firstSpaces).append("tst\t").append(reg).append('\n');
                     jumpCmd = "brmi\t";
                 } else if (ParserUtils.isRegister(arg)) {
-                    out.append(firstSpaces).append("cp\t").append(reg).append(", ").append(arg).append('\n');
+                    addCompareInstruction(firstSpaces, regs, args, out);
+                    //out.append(firstSpaces).append("cp\t").append(reg).append(", ").append(arg).append('\n');
                     jumpCmd = signed ? "brlt\t" : "brlo\t";
                 } else {
                     out.append(firstSpaces).append("cpi\t").append(reg).append(", ").append(arg).append('\n');
@@ -312,7 +360,8 @@ class Compiler {
                     out.append(firstSpaces).append("tst\t").append(reg).append('\n');
                     jumpCmd = "brpl\t";
                 } else if (ParserUtils.isRegister(arg)) {
-                    out.append(firstSpaces).append("cp\t").append(reg).append(", ").append(arg).append('\n');
+                    //out.append(firstSpaces).append("cp\t").append(reg).append(", ").append(arg).append('\n');
+                    addCompareInstruction(firstSpaces, regs, args, out);
                     jumpCmd = signed ? "brge\t" : "brsh\t";
                 } else {
                     out.append(firstSpaces).append("cpi\t").append(reg).append(", ").append(arg).append('\n');
@@ -326,7 +375,8 @@ class Compiler {
                 // x > y  ->   y < x
                 // x > k  ->   x >= k+1
                 if (ParserUtils.isRegister(arg)) {
-                    out.append(firstSpaces).append("cp\t").append(arg).append(", ").append(reg).append('\n');
+                    //out.append(firstSpaces).append("cp\t").append(arg).append(", ").append(reg).append('\n');
+                    addCompareInstruction(firstSpaces, args, regs, out);
                     jumpCmd = signed ? "brlt\t" : "brlo\t";
                 } else {
                     out.append(firstSpaces).append("cpi\t").append(reg).append(", ").append(arg).append("+1").append('\n');
@@ -338,7 +388,8 @@ class Compiler {
                 // x <= y  ->  y >= x
                 // x >= k  ->  x > k-1
                 if (ParserUtils.isRegister(arg)) {
-                    out.append(firstSpaces).append("cp\t").append(arg).append(", ").append(reg).append('\n');
+                    //out.append(firstSpaces).append("cp\t").append(arg).append(", ").append(reg).append('\n');
+                    addCompareInstruction(firstSpaces, args, regs, out);
                     jumpCmd = signed ? "brge\t" : "brsh\t";
                 } else {
                     out.append(firstSpaces).append("cpi\t").append(reg).append(", ").append(arg).append("-1").append('\n');
@@ -346,13 +397,34 @@ class Compiler {
                 }
                 out.append(firstSpaces).append(jumpCmd).append(label);
                 break;
+                default:
+                    throw new SyntaxException("unsupported operation");
         }
         return true;
     }
 
+    private void addCompareInstruction(String firstSpaces, List<String> arg1, List<String> arg2, StringBuilder out) throws SyntaxException {
+        if (arg1.size() != arg2.size()) {
+            throw new SyntaxException("unsupported operation");
+        }
+        for (int i = 0; i < arg1.size(); i++) {
+            int j = arg1.size() - 1 - i;
+            String reg = arg1.get(j);
+            String arg = arg2.get(j);
+            String cmd = i == 0 ? "cp\t" : "cpc\t";
+            out.append(firstSpaces).append(cmd).append(reg).append(", ").append(arg).append('\n');
+        }
+
+    }
+
 
     private void compileDefault(String src, String[] tokens, StringBuilder out, String firstToken) throws SyntaxException {
-        if (!ParserUtils.isInstruction(firstToken)) {
+        boolean skipCompilation = ParserUtils.isInstruction(firstToken);
+        Variable var = parser.getVariable(firstToken);
+        if (var != null && var.isPointer() && src.trim().startsWith(firstToken + ":")) {
+            skipCompilation = true;
+        }
+        if (!skipCompilation) {
             try {
                 StringBuilder tempOut = new StringBuilder();
                 if (expressionsCompiler.compile(tokens, tempOut)) {

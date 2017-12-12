@@ -1,4 +1,4 @@
-package ru.trolsoft.asmext;
+package ru.trolsoft.asmext.data;
 
 public class Constant {
 

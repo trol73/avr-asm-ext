@@ -1,24 +1,24 @@
-package ru.trolsoft.asmext;
+package ru.trolsoft.asmext.data;
 
 import java.util.ArrayList;
 import java.util.List;
 
-class Block {
-    static final int TYPE_LOOP = 1;
+public class Block {
+    public static final int TYPE_LOOP = 1;
 
-    final int type;
-    final List<String> args;
-    final int beginLine;
-    String reg;
-    String label;
+    public final int type;
+    public final List<String> args;
+    public final int beginLine;
+    public String reg;
+    public String label;
 
-    Block(int type, List<String> args, int beginLine) {
+    public Block(int type, List<String> args, int beginLine) {
         this.type= type;
         this.args = args;
         this.beginLine = beginLine;
     }
 
-    Block(int type, String[] args, int beginLine) {
+    public Block(int type, String[] args, int beginLine) {
         this(type, buildList(args), beginLine);
     }
 

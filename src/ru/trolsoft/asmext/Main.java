@@ -40,6 +40,33 @@ public class Main {
 }
 /*
 
+if (r2.r1 < ZH.ZL) goto @2 ; ended subtraction
+
+    .EQU cDecSep = '.' 		; decimal separator for numbers displayed
+	ldi	rmp, cDecSep
+	;rmp = cDecSep
+
+	.loop (rmp = 16)
+	UartMonF1:
+		sbis UCSRA, UDRE ; wait for empty buffer
+		rjmp UartMonF1                              continue !!!
+		ld R0,Z+
+		out UDR,R0
+	.endloop
+
+	X = s_video_mem + 16
+	;ldi	XH, HIGH(s_video_mem+16)
+	;ldi	XL, LOW(s_video_mem+16)
+
+	if (ZL == 1) goto Interval_enc_clockwise
+	if (ZL == 7) goto Interval_enc_clockwise
+	if (ZL == 8) goto Interval_enc_clockwise
+	if (ZL == 14) goto Interval_enc_clockwise
+
+
+
+
+
 .MACRO swap_regs
     push    $1
     $1 = $0
@@ -70,26 +97,6 @@ sts $0, $2
  IF (!sreg.z)
  ENDIF
                                                                 unsigned            signed
-
- if (r1 == r2) goto lbl;        cp r1, r2; breq lbl
-
- if (r1 != r2) goto lbl;        cp r1, r2; brne lbl
-
- if (r1 == const) goto lbl;     cpi r, const; breq lbl
-
- if (r != const) goto lbl;     cpi r, const; brne lbl
-
- if (r1 < r2) goto lbl;         cp r1, r2;                         brlo               brlt
-
- if (r1 > r2) goto lbl;         cp r1, r2
-
- if (r1 <= r2) goto lbl;        cp r1, r2
-
- if (r1 >= r2) goto lbl;        cp r1, r2;                          brsh            brge
-
- if (r == 0) goto lbl           tst r; breq lbl
-
- if (r != 0) goto lbl           tst r; brne lbl
 
 .if
 .else

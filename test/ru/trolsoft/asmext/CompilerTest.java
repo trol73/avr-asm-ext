@@ -1,6 +1,9 @@
 package ru.trolsoft.asmext;
 
 import org.junit.jupiter.api.Test;
+import ru.trolsoft.asmext.data.Alias;
+import ru.trolsoft.asmext.data.Procedure;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class CompilerTest {
@@ -72,6 +75,11 @@ class CompilerTest {
     }
 
     @Test
+    void testIfGroupGoto() throws SyntaxException {
+        testLine("if (r21.r20 < r23.r22) goto lbl", "cp\tr20, r22\ncpc\tr21, r23\nbrlo\tlbl");
+    }
+
+    @Test
     void testProcCalls() throws SyntaxException {
         parser = new Parser();
         compiler = new Compiler(parser);
@@ -98,6 +106,17 @@ class CompilerTest {
 
         parser.parseLine(".extern ext_var : byte");
         testLine("rcall ext_proc (ext_var)", "lds\tr24, ext_var\t ; var = ext_var\nrcall\text_proc");
+
+        parser = new Parser();
+        parser.gcc = false;
+        parser.parseLine(".def rmp=r24");
+        parser.parseLine(".proc my_proc");
+        parser.parseLine(".args val(rmp)");
+        parser.parseLine(".endproc");
+
+        parser.parseLine("rcall my_proc(0x03)");
+        assertTrue(parser.getOutput().get(5).contains("ldi\tr24, 0x03\t; val = 0x03"));
+        parser.parseLine("rcall my_proc('=')");
     }
 
 }

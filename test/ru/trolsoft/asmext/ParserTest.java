@@ -1,6 +1,9 @@
 package ru.trolsoft.asmext;
 
 import org.junit.jupiter.api.Test;
+import ru.trolsoft.asmext.data.Alias;
+import ru.trolsoft.asmext.data.Constant;
+import ru.trolsoft.asmext.data.Procedure;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -123,6 +126,21 @@ class ParserTest {
                 "brne __r24_1"
                 )
         );
+
+        parser = new Parser();
+        test(a(
+                ".use r24 as rmp",
+                ".loop(rmp = 1+(1+1)):",
+                ".endloop"
+                ), a (
+                 "",
+                "ldi r24, 1+(1+1)",
+                "__rmp_2:",
+                "dec r24",
+                "brne __rmp_2"
+                )
+        );
+
         parser = new Parser();
         boolean error;
         try {
@@ -173,6 +191,42 @@ class ParserTest {
         parser.parseLine(".extern cmd_x : byte");
         assertTrue(parser.variables.size() == 2);
         assertTrue(parser.variables.get("cmd_x").getSize() == 1);
+
+        parser.parseLine(".extern data_ptr: prgptr");
+        parser.parseLine("data_ptr:");
+        parser.parseLine("\t.db 1");
+
+        parser.parseLine(".extern data_ptr1, data_ptr2: prgptr");
+        assertNotNull(parser.getVariable("data_ptr"));
+        assertNotNull(parser.getVariable("data_ptr1"));
+        assertNotNull(parser.getVariable("data_ptr2"));
+
+
+        boolean error;
+        try {
+            parser.parseLine(".extern = : ptr");
+            error = false;
+        } catch (SyntaxException e) {
+            error = true;
+        }
+        assertTrue(error);
+
+        try {
+            parser.parseLine(".extern 123 : ptr");
+            error = false;
+        } catch (SyntaxException e) {
+            error = true;
+        }
+        assertTrue(error);
+
+        try {
+            parser.parseLine(".extern r23 : byte");
+            error = false;
+        } catch (SyntaxException e) {
+            error = true;
+        }
+        assertTrue(error);
+
     }
 
     @Test
@@ -212,6 +266,18 @@ class ParserTest {
             parser.parseLine(".args x(r24), y(r22)");
             error = false;
         } catch (SyntaxException e) {
+            assertTrue(e.getMessage().contains(".args can be defined in .proc block only"));
+            error = true;
+        }
+        assertTrue(error);
+
+        parser = new Parser();
+        try {
+            parser.parseLine(".proc name");
+            parser.parseLine(".args r11(x)");
+            error = false;
+        } catch (SyntaxException e) {
+            assertTrue(e.getMessage().contains("wrong name: 'r11' (register name)"));
             error = true;
         }
         assertTrue(error);
@@ -277,4 +343,66 @@ class ParserTest {
         assertTrue(parser.getOutput().get(0).contains("subi\tr20, -(12-(12 + 7))"));
     }
 
+
+    @Test
+    void testUse() throws SyntaxException {
+        Parser parser = new Parser();
+        parser.parseLine(".use r16 as rmp");
+        assertTrue(parser.globalAliases.containsKey("rmp"));
+        assertEquals(parser.globalAliases.get("rmp").register, "r16");
+        parser.parseLine("rmp = 0");
+        assertTrue(parser.getOutput().get(parser.getOutput().size()-1).contains("clr\tr16"));
+        parser.parseLine("rmp = 'a'");
+        assertTrue(parser.getOutput().get(parser.getOutput().size()-1).contains("ldi\tr16, 'a'"));
+        parser.parseLine("ldi\trmp, '0'");
+        assertTrue(parser.getOutput().get(parser.getOutput().size()-1).contains("ldi\tr16, '0'"));
+        parser.parseLine("rmp = ' '");
+        assertTrue(parser.getOutput().get(parser.getOutput().size()-1).contains("ldi\tr16, ' '"));
+
+        parser = new Parser();
+        parser.parseLine(".proc my_proc");
+        parser.parseLine(".use r16 as x");
+        assertTrue(parser.currentProcedure.uses.containsKey("x"));
+        assertEquals(parser.currentProcedure.getAlias("x").register, "r16");
+        parser.parseLine(".endproc");
+
+        parser = new Parser();
+        parser.gcc = false;
+        parser.parseLine(".DEF rmp = R16 ; comment");
+        assertTrue(parser.globalAliases.containsKey("rmp"));
+        assertEquals(parser.globalAliases.get("rmp").register, "R16");
+        parser.parseLine("rmp = 0x1B");
+        assertTrue(parser.getOutput().get(parser.getOutput().size()-1).contains("ldi\tR16, 0x1B"));
+        parser.parseLine("rmp = ' '");
+        assertTrue(parser.getOutput().get(parser.getOutput().size()-1).contains("ldi\tR16, ' '"));
+
+        parser = new Parser();
+        boolean error;
+        try {
+            parser.parseLine(".use r1 as r2");
+            error = false;
+        } catch (SyntaxException e) {
+            error = true;
+            assertTrue(e.getMessage().contains("wrong name: 'r2' (register name)"));
+        }
+        assertTrue(error);
+    }
+
+
+    @Test
+    void tokensTest() {
+        Parser parser = new Parser();
+
+        assertArrayEquals(parser.splitToTokens("x=1"), a("x", "=", "1"));
+        assertArrayEquals(parser.splitToTokens("x =\t1"), a("x", " ", "=", "\t", "1"));
+        assertArrayEquals(parser.splitToTokens("x=123"), a("x", "=", "123"));
+        assertArrayEquals(parser.splitToTokens("x=0x123"), a("x", "=", "0x123"));
+        assertArrayEquals(parser.splitToTokens("x=0b101"), a("x", "=", "0b101"));
+        assertArrayEquals(parser.splitToTokens("x=0xABC"), a("x", "=", "0xABC"));
+        assertArrayEquals(parser.splitToTokens("x='1'"), a("x", "=", "'1'"));
+        assertArrayEquals(parser.splitToTokens("x=' '"), a("x", "=", "' '"));
+        assertArrayEquals(parser.splitToTokens("x='\t'"), a("x", "=", "'\t'"));
+        assertArrayEquals(parser.splitToTokens("x='='"), a("x", "=", "'='"));
+
+    }
 }
