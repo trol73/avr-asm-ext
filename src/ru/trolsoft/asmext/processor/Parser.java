@@ -1,15 +1,19 @@
-package ru.trolsoft.asmext;
+package ru.trolsoft.asmext.processor;
 
 
 import ru.trolsoft.asmext.data.*;
+import ru.trolsoft.asmext.files.OutputFile;
+import ru.trolsoft.asmext.files.SourceFile;
+import ru.trolsoft.asmext.utils.TokenString;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
 import java.util.*;
 
-class Parser {
+public class Parser {
     Procedure currentProcedure;
     private int lineNumber;
-    private List<String> output = new ArrayList<>();
+    private OutputFile output = new OutputFile();
     private final Compiler compiler = new Compiler(this);
     Map<String, Procedure> procedures = new HashMap<>();
     Map<String, Variable> variables = new HashMap<>();
@@ -25,192 +29,147 @@ class Parser {
 
     }
 
-    Parser(boolean gcc) {
+    public Parser(boolean gcc) {
         this();
         this.gcc = gcc;
     }
 
 
-    void parse(File file) throws IOException, SyntaxException {
-        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-            preload(reader);
-        }
-        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-            parse(reader);
+    public void parse(File file) throws IOException, SyntaxException {
+        SourceFile src = new SourceFile();
+        src.read(file);
+        preload(src);
+        currentProcedure = null;
+        for (TokenString s : src) {
+            parseLine(s);
         }
     }
 
-    private void parse(BufferedReader reader) throws IOException, SyntaxException {
-        lineNumber = 0;
-        while (true) {
-            String line = reader.readLine();
-            if (line == null) {
-                break;
-            }
-            parseLine(line);
-        }
-    }
 
     void parseLine(String line) throws SyntaxException {
+        parseLine(new TokenString(line));
+    }
+
+    void parseLine(TokenString line) throws SyntaxException {
         lineNumber++;
-        String trimLine = removeCommentsAndSpaces(line);
-        String trimLower = trimLine.toLowerCase();
-        if (trimLine.isEmpty()) {
-            output.add(line);
-        } else if (checkDirective(trimLine, ".use")) {
-            use(trimLine.substring(".use".length()).trim());
-            output.add(";" + line);
-        } else if (checkDirective(trimLower, ".def")) {
-            def(trimLine.substring(".def".length()).trim());
-            output.add(";" + line);
-        } else if (checkDirective(trimLine, ".proc")) {
-            startProc(trimLine.substring(".proc".length()).trim());
-            output.add(";" + line);
-        } else if (checkDirective(trimLine, ".endproc")) {
-            endProc(trimLine.substring(".endproc".length()).trim());
-            output.add(";" + line);
-        } else if (checkDirective(trimLine, ".args")) {
-            procArgs(trimLine.substring(".args".length()).trim());
-            output.add(";" + line);
-        } else if (trimLine.startsWith("@") && trimLine.contains(":") && currentProcedure != null) {
-            localLabel(trimLine.substring(1, trimLine.length() - 1).trim());
-        } else if (checkDirective(trimLine, ".loop")) {
-            processStartLoop(line, trimLine.substring(".loop".length()).trim());
-        } else if (checkDirective(trimLine, ".endloop")) {
-            processEndLoop(line, trimLine.substring(".endloop".length()).trim());
-        } else if (checkDirective(trimLine, ".extern")) {
-            processExtern(line, trimLine.substring(".extern".length()).trim());
-        } else if (checkDirective(trimLine, ".equ")) {
-            processEqu(line, trimLine.substring(".equ".length()).trim());
-        } else if (checkDirective(trimLine, "#define")) {
-            processDefine(line, trimLine.substring("#define".length()).trim());
+        String firstToken = line.getFirstToken();
+        if (".".equals(firstToken)) {
+            String trimLine = line.pure();
+            String name = line.size() > 1 ? line.getToken(1) : null;
+            if (line.isEmpty()) {
+                output.add(line);
+            } else if ("use".equals(name)) {
+                use(line);
+            } else if ("def".equalsIgnoreCase(name)) {
+                output.add(";" + line);
+            } else if ("proc".equals(name)) {
+                startProcedure(line);
+            } else if ("endproc".equals(name)) {
+                endProc(line);
+            } else if ("args".equals(name)) {
+                loadProcArgs(line);
+            } else if ("loop".equals(name)) {
+                processStartLoop(line);
+            } else if ("endloop".equals(name)) {
+                processEndLoop(line);
+            } else if ("extern".equals(name)) {
+                processExtern(line, trimLine.substring(".extern".length()).trim());
+            } else if ("equ".equalsIgnoreCase(name)) {
+                processEqu(line.toString(), trimLine.substring(".equ".length()).trim());
+            } else {
+                processLine(line);
+            }
+        } else if (firstToken != null && firstToken.equals("#define")) {
+            processDefine(line);
+
+
+//        } else if (trimLine.startsWith("@") && trimLine.contains(":") && currentProcedure != null) {
+//            localLabel(trimLine.substring(1, trimLine.length() - 1).trim());
+
         } else {
             processLine(line);
         }
     }
 
-    void preload(BufferedReader reader) throws IOException {
+    private void preload(SourceFile src) throws SyntaxException {
         if (gcc) {
             currentSegment = Segment.CODE;
         }
-        while (true) {
-            String line = reader.readLine();
-            if (line == null) {
-                break;
-            }
-            preloadLine(line);
+        currentProcedure = null;
+        for (TokenString s : src) {
+            preloadLine(s);
         }
     }
 
-    void preloadLine(String line) {
+    void preloadLine(String line) throws SyntaxException {
+        preloadLine(new TokenString(line));
+    }
+
+    private void preloadLine(TokenString line) throws SyntaxException {
         lineNumber++;
-        String trimLine = removeCommentsAndSpaces(line);
+        if (line.firstTokenIs(".")) {
+            preloadDirective(line);
+        } else if (line.lastTokenIs(":") && !line.firstTokenIs("@")) {
+            preloadLabel(line);
+        }
+    }
+
+
+    private void preloadDirective(TokenString line) throws SyntaxException {
+        String secondToken = line.size() > 1 ? line.getToken(1) : null;
         if (!gcc) {
-            if (".dseg".equalsIgnoreCase(trimLine)) {
+            if ("dseg".equalsIgnoreCase(secondToken)) {
                 currentSegment = Segment.DATA;
                 return;
-            } else if (".cseg".equalsIgnoreCase(trimLine)) {
+            } else if ("cseg".equalsIgnoreCase(secondToken)) {
                 currentSegment = Segment.CODE;
                 return;
             }
         }
-        if (trimLine.endsWith(":") && !trimLine.startsWith(".") && !trimLine.startsWith("@")) {
-            String labelName = trimLine.substring(0, trimLine.length()-1);
-            Label label = new Label(labelName, lineNumber);
-            if (currentSegment == Segment.DATA) {
-                dataLabels.put(labelName, label);
-            } else {
-                codeLabels.put(labelName, label);
-            }
+        if ("proc".equals(secondToken)) {
+            line.removeEmptyTokens();
+            String name = line.getToken(2);
+            currentProcedure = new Procedure(name);
+            procedures.put(name, currentProcedure);
+        } else if ("endproc".equals(secondToken)) {
+            currentProcedure = null;
+        } else if ("args".equals(secondToken)) {
+            loadProcArgs(line);
+        } else if ("def".equalsIgnoreCase(secondToken)) {
+            def(line);
         }
-
     }
 
-
-    private void localLabel(String label) {
-        output.add(resolveLocalLabel(label) + ":");
+    private void preloadLabel(TokenString line) {
+        String labelName = line.getFirstToken();
+        Label label = new Label(labelName, lineNumber);
+        if (currentSegment == Segment.DATA) {
+            dataLabels.put(labelName, label);
+        } else {
+            codeLabels.put(labelName, label);
+        }
     }
 
     private String resolveLocalLabel(String label) {
         return currentProcedure.name + "__" + label;
     }
 
-    private void processLine(String line) throws SyntaxException {
-        String tokens[] = splitToTokens(line);
-        for (int i = 0; i < tokens.length; i++) {
-            String token = tokens[i];
-            String nextToken = i < tokens.length-1 ? tokens[i+1] : tokens[i];
+    private void processLine(TokenString line) throws SyntaxException {
+        for (int i = 0; i < line.size(); i++) {
+            String token = line.getToken(i);
+            String nextToken = i < line.size()-1 ? line.getToken(i+1) : null;
             Alias alias = ":".equals(nextToken) ? null : resolveProcAlias(token);
             if (alias != null) {
-                tokens[i] = alias.register;
+                line.modifyToken(i, alias.register);
             } else if (token.startsWith("@") && currentProcedure != null) {
-                tokens[i] = resolveLocalLabel(token.substring(1));
+                line.modifyToken(i, resolveLocalLabel(token.substring(1)));
             }
         }
-        StringBuilder outLine = new StringBuilder();
         try {
-            compiler.compile(line, tokens, outLine);
+            compiler.compile(line, output);
         } catch (SyntaxException e) {
             throw e.line(lineNumber);
         }
-        output.add(outLine.toString());
-    }
-
-
-    List<String> splitToTokensList(String line, boolean removeEmpty) {
-        List<String> result = new ArrayList<>();
-        if (line == null) {
-            return result;
-        }
-        final String delim = " \t,.+-*/=():";
-        StringTokenizer tokenizer = new StringTokenizer(line, delim, true);
-        boolean commentStarted = false;
-        while (tokenizer.hasMoreElements()) {
-            String next = tokenizer.nextToken();
-            String prev = result.isEmpty() ? null : result.get(result.size()-1);
-            if (prev != null && next.trim().isEmpty() && prev.trim().isEmpty()) {
-                result.set(result.size()-1, prev + next);
-                continue;
-            }
-
-            // ' ' and '\t' is char const
-            if ("'".equals(prev) && delim.contains(next) && next.length() == 1) {
-                result.set(result.size()-1, prev + next);
-                continue;
-            }
-            if (("'".equals(next)) && (prev != null && prev.startsWith("'") && prev.length() == 2) && delim.contains(prev.substring(1))) {
-                result.set(result.size()-1, prev + next);
-                continue;
-            }
-
-            if (commentStarted) {
-                result.set(result.size()-1, prev + next);
-                continue;
-            }
-            if (";".equals(next)) {
-                commentStarted = true;
-            } else if ("/".equals(next) && "/".equals(prev)) {
-                result.set(result.size()-1, prev + next);
-                commentStarted = true;
-                continue;
-            }
-            result.add(next);
-        }
-        if (removeEmpty) {
-            ParserUtils.removeEmptyTokens(result);
-        }
-        return result;
-    }
-
-    String[] splitToTokens(String line, boolean removeEmpty) {
-        List<String> list = splitToTokensList(line, removeEmpty);
-        String[] array = new String[list.size()];
-        return list.toArray(array);
-
-    }
-
-    String[] splitToTokens(String line) {
-        return splitToTokens(line, false);
     }
 
 
@@ -229,31 +188,13 @@ class Parser {
         return alias;
     }
 
-    private boolean checkDirective(String line, String directiveName) {
-        if (!line.startsWith(directiveName)) {
-            return false;
-        }
-        if (line.length() == directiveName.length()) {
-            return true;
-        }
-        char ch = line.charAt(directiveName.length());
-        return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '(';
-    }
 
-    private String removeCommentsAndSpaces(String s) {
-        s = s.trim();
-        int index = s.indexOf(';');
-        if (index >= 0) {
-            s = s.substring(0, index).trim();
+    private void startProcedure(TokenString src) throws SyntaxException {
+        src.removeEmptyTokens();
+        if (src.size() < 3) {
+            error("name expected");
         }
-        index = s.indexOf("//");
-        if (index >= 0) {
-            s = s.substring(0, index).trim();
-        }
-        return s;
-    }
-
-    private void startProc(String name) throws SyntaxException {
+        String name = src.getToken(2);
         checkName(name);
         if (currentProcedure != null) {
             error("nested .proc: '" + name + "'");
@@ -261,30 +202,38 @@ class Parser {
         currentProcedure = new Procedure(name);
         procedures.put(name, currentProcedure);
         output.add(name + ":");
+        output.addComment(src);
     }
 
-    private void endProc(String empty) throws SyntaxException {
-        if (!empty.isEmpty()) {
+    private void endProc(TokenString src) throws SyntaxException {
+        src.removeEmptyTokens();
+        if (src.size() != 2) {
             error("extra characters in line");
         }
         if (currentProcedure == null) {
             error("start .proc directive not found");
         }
         currentProcedure = null;
+        output.addComment(src);
     }
 
-    private void processStartLoop(String line, String args) throws SyntaxException {
-        if (args.endsWith(":")) {
-            args = args.substring(0, args.length()-1).trim();
+    private void processStartLoop(TokenString str) throws SyntaxException {
+        str.removeEmptyTokens();
+        if (":".equals(str.getLastToken())) {
+            str.removeLastToken();
         }
-        if (args.length() < 3) {
+        // .loop (x>2)
+        if (str.size() < 4) {
             error("expression expected");
         }
-        if (!(args.startsWith("(") && args.endsWith(")"))) {
+        if (!"(".equals(str.getToken(2)) || !")".equals(str.getLastToken())) {
             error("expected ()");
         }
-        args = args.substring(1, args.length()-1).trim();
-        Block block = new Block(Block.TYPE_LOOP, splitToTokens(args), lineNumber);
+        str.removeFirstToken(); // .
+        str.removeFirstToken(); // loop
+        str.removeFirstToken(); // (
+        str.removeLastToken();  // )
+        Block block = new Block(Block.TYPE_LOOP, str.getTokens(), lineNumber);
         if (block.args.isEmpty()) {
             error("loop parameter expected");
         }
@@ -310,7 +259,6 @@ class Parser {
             if (!"=".equals(block.args.get(1)) || block.args.size() < 3) {
                 error("wrong expression");
             }
-            StringBuilder sb = createStringBuilderWithSpaces(line);
             String val = block.args.get(2);
             if (currentProcedure != null) {
                 String resolve = currentProcedure.resolveVariable(val);
@@ -318,35 +266,25 @@ class Parser {
                     val = resolve;
                 }
             }
+            // TODO it's compiler code !!!
+            StringBuilder sb;
             if (block.args.size() == 3 && ParserUtils.isRegister(val)) {
-                sb.append("mov\t").append(reg).append(", ").append(val);
+                sb = output.appendCommand(str, "mov", reg, val);
             } else {
-                sb.append("ldi\t").append(reg).append(", ");
+                sb = output.appendCommand(str, "ldi", reg, "");
                 for (int i = 2; i < block.args.size(); i++) {
                     sb.append(block.args.get(i));
                 }
             }
             sb.append("\t\t; ").append(block.args.get(0));
-            output.add(sb.toString());
         }
         output.add(block.label + ":");
     }
 
-    private StringBuilder createStringBuilderWithSpaces(String line) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < line.length(); i++) {
-            char c = line.charAt(i);
-            if (c == ' ' || c == '\t') {
-                sb.append(c);
-            } else {
-                break;
-            }
-        }
-        return sb;
-    }
 
-    private void processEndLoop(String line, String empty) throws SyntaxException {
-        if (!empty.isEmpty()) {
+    private void processEndLoop(TokenString line) throws SyntaxException {
+        line.removeEmptyTokens();
+        if (line.size() != 2) {
             error("extra characters in line");
         }
         if (blocks.empty()) {
@@ -356,14 +294,13 @@ class Parser {
         if (block.type != Block.TYPE_LOOP) {
             error(".loop not found");
         }
-        String spaces = createStringBuilderWithSpaces(line).toString();
-
-        output.add(spaces + "dec\t" + block.reg + "\t\t; " + block.args.get(0));
-        output.add(spaces + "brne\t" + block.label);
+        output.appendCommand(line.getIndent(), "dec", block.reg).
+                append("\t\t; ").append(block.args.get(0));
+        output.appendCommand(line, "brne", block.label);
     }
 
 
-    private void processExtern(String line, String args) throws SyntaxException {
+    private void processExtern(TokenString line, String args) throws SyntaxException {
         // check procedure
         int index = args.indexOf('(');
         if (index > 0) {
@@ -404,7 +341,8 @@ class Parser {
         if (index > 0) {
             String varNames = args.substring(0, index).trim();
             String varType = args.substring(index+1).trim().toLowerCase();
-            List<String> names = splitToTokensList(varNames, true);
+            List<String> names = new TokenString(varNames).getTokens();
+            ParserUtils.removeEmptyTokens(names);
             for (String varName : names) {
                 if (",".equals( varName)) {
                     continue;
@@ -449,31 +387,34 @@ class Parser {
     }
 
 
-    private void processDefine(String line, String args) {
-        String split[] = splitToTokens(args);
-        if (split.length >= 1) {
-            String name = split[0];
-            String value = args.substring(name.length()).trim();
+    private void processDefine(TokenString line) {
+        line.removeEmptyTokens();
+        line.removeFirstToken();
+        if (!line.isEmpty()) {
+            String name = line.getFirstToken();
+            String value = line.mergeTokens(1);
             Constant c = new Constant(name, value, Constant.Type.DEFINE);
             constants.put(name, c);
         }
-        output.add(line);
+        output.add(line.toString());
     }
 
 
-    private void procArgs(String args) throws SyntaxException {
+    private void loadProcArgs(TokenString line) throws SyntaxException {
         if (currentProcedure == null) {
             error(".args can be defined in .proc block only");
         }
-        String[] split = args.split(",");
-        for (String s : split) {
-            s = s.trim();
-            String nv[] = s.split("\\(");
-            if (nv.length != 2 && !nv[1].endsWith(")")) {
-                error("wrong argument: " + s);
+        // TODO executed twice - on preload and load !!!
+        line.removeEmptyTokens();
+        for (int i = 2; i < line.size(); ) {
+            String name = line.getToken(i++);
+            if (i >= line.size()-1 || !"(".equals(line.getToken(i++))) {
+                error("wrong argument: " + name);
             }
-            String name = nv[0];
-            String reg = nv[1].substring(0, nv[1].length()-1);
+            String reg = line.getToken(i++);
+            if (i >= line.size() || !")".equals(line.getToken(i++))) {
+                error("wrong argument: " + name);
+            }
             if (globalAliases.containsKey(reg)) {
                 reg = globalAliases.get(reg).register;
             }
@@ -485,20 +426,32 @@ class Parser {
                 error("argument '" + name + "' already defined for this procedure");
             }
             currentProcedure.addArg(alias);
+            if (i < line.size() && !",".equals(line.getToken(i++))) {
+                error("wrong argument, comma expected after " + name);
+            }
         }
+        output.add(";" + line);
     }
 
 
-    private void use(String str) throws SyntaxException {
-        String uses[] = str.split(",");
-        for (String use : uses) {
-            use = use.trim();
-            String args[] = use.split("\\s+");
-            if (args.length != 3 || !args[1].toLowerCase().equals("as")) {
+    private void use(TokenString str) throws SyntaxException {
+        str.removeEmptyTokens();
+        int index = 2;
+        while (index < str.size()) {
+            if (index + 2 >= str.size()) {
                 error("wrong .use syntax ");
             }
-            String regName = args[0];
-            String aliasName = args[2];
+            String regName = str.getToken(index++);
+            String as = str.getToken(index++);
+            String aliasName = str.getToken(index++);
+            if (!"as".equals(as)) {
+                error("wrong .use syntax ");
+            }
+            if (index < str.size()) {
+                if (!",".equals(str.getToken(index++))) {
+                    error("wrong .use syntax ");
+                }
+            }
             Alias alias = createAlias(aliasName, regName);
             if (currentProcedure != null) {
                 if (currentProcedure.hasAlias(aliasName)) {
@@ -515,34 +468,32 @@ class Parser {
                 globalAliases.put(aliasName, alias);
             }
         }
+        output.addComment(str);
     }
 
-    private void def(String str) throws SyntaxException {
-        String uses[] = str.split(",");
-        for (String use : uses) {
-            use = use.trim();
-            String[] args = splitToTokens(use, true);//use.split("\\s+");
-            if (args.length != 3 || !args[1].toLowerCase().equals("=")) {
-                error("wrong .def syntax ");
-            }
-            String regName = args[2];
-            String aliasName = args[0];
-            Alias alias = createAlias(aliasName, regName);
-            if (currentProcedure != null) {
-                if (currentProcedure.hasAlias(aliasName)) {
-                    error("alias '" + aliasName + "' already defined for this procedure");
-                }
-                if (currentProcedure.hasArg(aliasName)) {
-                    error("argument '" + aliasName + "' already defined for this procedure");
-                }
-                currentProcedure.addAlias(alias);
-            } else {
-                if (globalAliases.containsKey(aliasName)) {
-                    error("global alias '" + aliasName + "' already defined");
-                }
-                globalAliases.put(aliasName, alias);
-            }
+    private void def(TokenString str) throws SyntaxException {
+        str.removeEmptyTokens();
+        if (str.size() != 5) {
+            error("wrong .def syntax ");
         }
+        String aliasName = str.getToken(2);
+        String regName = str.getToken(4);
+        Alias alias = createAlias(aliasName, regName);
+        if (currentProcedure != null) {
+            if (currentProcedure.hasAlias(aliasName)) {
+                error("alias '" + aliasName + "' already defined for this procedure");
+            }
+            if (currentProcedure.hasArg(aliasName)) {
+                error("argument '" + aliasName + "' already defined for this procedure");
+            }
+            currentProcedure.addAlias(alias);
+        } else {
+            if (globalAliases.containsKey(aliasName)) {
+                error("global alias '" + aliasName + "' already defined");
+            }
+            globalAliases.put(aliasName, alias);
+        }
+
     }
 
     private Alias createAlias(String name, String reg) throws SyntaxException {
@@ -574,7 +525,7 @@ class Parser {
     }
 
 
-    List<String> getOutput() {
+    public OutputFile getOutput() {
         return output;
     }
 
@@ -609,7 +560,7 @@ class Parser {
         if (!gcc || constant.type == Constant.Type.DEFINE) {
             return constant.name;
         }
-        String[] tokens = splitToTokens(constant.value);
+        TokenString tokens = new TokenString(constant.value);
         StringBuilder result = new StringBuilder();
         for (String token : tokens) {
             if (isConstant(token)) {
@@ -632,7 +583,7 @@ class Parser {
         if (ParserUtils.isConstExpression(expr)) {
             return true;
         }
-        String[] tokens = splitToTokens(expr);
+        TokenString tokens = new TokenString(expr);
         StringBuilder builder = new StringBuilder();
         for (String s : tokens) {
             if (isConstant(s)) {
@@ -643,11 +594,13 @@ class Parser {
         return ParserUtils.isConstExpression(builder.toString());
     }
 
-    boolean isConstExpressionTokens(List<String> tokens) {
+    boolean isConstExpressionTokens(List<String> tokens, List<String> constants) {
         StringBuilder builder = new StringBuilder();
         for (String s : tokens) {
             if (isConstant(s)) {
                 s = makeConstExpression(s);
+            } else if (constants != null && constants.contains(s)) {
+                s = "0";
             }
             builder.append(s);
         }

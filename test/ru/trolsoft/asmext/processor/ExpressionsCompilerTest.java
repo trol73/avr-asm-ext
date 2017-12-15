@@ -1,18 +1,20 @@
-package ru.trolsoft.asmext;
+package ru.trolsoft.asmext.processor;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import ru.trolsoft.asmext.data.Variable;
+import ru.trolsoft.asmext.files.OutputFile;
+import ru.trolsoft.asmext.utils.TokenString;
 
-import static ru.trolsoft.asmext.ExpressionsCompiler.CompileException;
+import static ru.trolsoft.asmext.processor.ExpressionsCompiler.CompileException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class ExpressionsCompilerTest {
 
-    private static String[] ta(String ... tokens) {
-        return tokens;
+    private static TokenString ta(String ... tokens) {
+        return new TokenString(tokens);
     }
 
     @BeforeEach
@@ -23,8 +25,8 @@ class ExpressionsCompilerTest {
     void tearDown() {
     }
 
-    private void test(ExpressionsCompiler ec, String[] tokens, String outVal) throws CompileException {
-        StringBuilder out = new StringBuilder();
+    private void test(ExpressionsCompiler ec, TokenString tokens, String outVal) throws CompileException {
+        OutputFile out = new OutputFile();
         ec.compile(tokens, out);
         assertEquals(out.toString().trim(), outVal);
     }
@@ -44,6 +46,8 @@ class ExpressionsCompilerTest {
         test(ec, ta("r5", "=", "-", "r4", "+", "10", "-", "1"), "mov\tr5, r4\nneg\tr5\nsubi\tr5, -(10-1)");
         test(ec, ta("r5", "=", "0b00000001"), "ldi\tr5, 0b00000001");
         test(ec, ta("r5", "=", "0xAB"), "ldi\tr5, 0xAB");
+        test(ec, ta("r15", "=", "1", "<<", "5"), "ldi\tr15, 1<<5");
+        test(ec, ta("r15", "=", "(", "1", "<<", "5", ")", "|", "0x12"), "ldi\tr15, (1<<5)|0x12");
     }
 
     @Test
@@ -131,14 +135,14 @@ class ExpressionsCompilerTest {
 
         boolean error;
         try {
-            ec.compile(ta("r23", ".", "r22", "10"), new StringBuilder());
+            ec.compile(ta("r23", ".", "r22", "10"), new OutputFile());
             error = false;
         } catch (CompileException e) {
             error = true;
         }
         assertTrue(error);
         try {
-            ec.compile(ta("r23", ".", "r22", "unknown"), new StringBuilder());
+            ec.compile(ta("r23", ".", "r22", "unknown"), new OutputFile());
             error = false;
         } catch (CompileException e) {
             error = true;
@@ -150,7 +154,7 @@ class ExpressionsCompilerTest {
     void testErrors() {
         Parser parser = new Parser();
         ExpressionsCompiler ec = new ExpressionsCompiler(parser);
-        StringBuilder out = new StringBuilder();
+        OutputFile out = new OutputFile();
         boolean error;
 
         try {
@@ -214,7 +218,7 @@ class ExpressionsCompilerTest {
             parser.parseLine("unknown = r1");
         } catch (SyntaxException ignore) {}
         assertTrue(parser.getOutput().size() == 1);
-        assertEquals(parser.getOutput().get(0), "unknown = r1");
+        assertEquals(parser.getOutput().get(0), "unknown=r1");
 
         try {
             parser.parseLine("Z += unknown");
@@ -251,6 +255,7 @@ class ExpressionsCompilerTest {
         test(ec, ta("Y", "=", "0x1234"), "ldi\tYL, LOW(0x1234)\nldi\tYH, HIGH(0x1234)");
         test(ec, ta("Y", "=", "pv"), "ldi\tYL, LOW(pv)\nldi\tYH, HIGH(pv)");
         test(ec, ta("Z", "=", "ppv"), "ldi\tZL, LOW(2*ppv)\nldi\tZH, HIGH(2*ppv)");
+        test(ec, ta("Z", "=", "pv", "+", "2"), "ldi\tZL, LOW(pv+2)\nldi\tZH, HIGH(pv+2)");
 
         parser.gcc = true;
         test(ec, ta("Y", "=", "0x1234"), "ldi\tYL, (0x1234 & 0xFF)\nldi\tYH, (0x1234 >> 8)");

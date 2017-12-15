@@ -1,9 +1,10 @@
-package ru.trolsoft.asmext;
+package ru.trolsoft.asmext.processor;
 
-import org.omg.CORBA.SystemException;
 import ru.trolsoft.asmext.data.NamedPair;
-import ru.trolsoft.asmext.data.Procedure;
 import ru.trolsoft.asmext.data.Variable;
+import ru.trolsoft.asmext.data.Procedure;
+import ru.trolsoft.asmext.files.OutputFile;
+import ru.trolsoft.asmext.utils.TokenString;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,43 +20,32 @@ class Compiler {
         this.expressionsCompiler = new ExpressionsCompiler(parser);
     }
 
-    void compile(String src, String[] tokens, StringBuilder out) throws SyntaxException {
-        if (tokens.length == 0) {
+    void compile(TokenString src, OutputFile out) throws SyntaxException {
+        if (src.isEmpty()) {
             return;
         }
-        String firstToken = null;
-        for (String token : tokens) {
-            if (!token.trim().isEmpty()) {
-                firstToken = token;
-                break;
-            }
-        }
-        if (firstToken == null) {
-            compileDefault(src, tokens, out, null);
-            return;
-        }
-        switch (firstToken) {
+        switch (src.getFirstToken()) {
             case "push":
             case "pop":
-                compilePushPop(tokens, out);
+                compilePushPop(src, out);
                 break;
             case "call":
             case "rcall":
             case "jmp":
             case "rjmp":
-                compileCall(src, tokens, out, firstToken);
+                compileCall(src, out);
                 break;
             case "if":
-                if (compileIfGoto(src, tokens, out)) {
+                if (compileIfGoto(src, out)) {
                     break;
                 }
             default:
-                compileDefault(src, tokens, out, firstToken);
+                compileDefault(src, out);
         }
     }
 
 
-    private Procedure parseProcCallArgs(List<NamedPair> args, String[] tokens, String firstToken) throws SyntaxException {
+    private Procedure parseProcCallArgs(List<NamedPair> args, TokenString src) throws SyntaxException {
         final int STATE_WAIT_INSTRUCTION = 0;
         final int STATE_WAIT_PROC_NAME = 1;
         final int STATE_WAIT_ARGS = 2;
@@ -69,13 +59,13 @@ class Compiler {
         String argName = null;
         String argValue = "";
         Procedure procedure = null;
-        for (String s : tokens) {
-            if (s.trim().isEmpty() || ParserUtils.isComment(s)) {
+        for (String s : src) {
+            if (s.trim().isEmpty()) {// || ParserUtils.isComment(s)) {
                 continue;
             }
             switch (state) {
                 case STATE_WAIT_INSTRUCTION:
-                    if (!s.equals(firstToken)) {
+                    if (!s.equals(src.getFirstToken())) {
                         throw new SyntaxException("internal error");
                     }
                     state = STATE_WAIT_PROC_NAME;
@@ -91,7 +81,7 @@ class Compiler {
                         if (procedure == null) {
                             throw new SyntaxException("undefined procedure: \"" + procedureName + '"');
                         }
-                    } else if (!ParserUtils.isComment(s)) {
+                    } else { //if (!ParserUtils.isComment(s)) {
                         throw new SyntaxException("wrong call syntax");
                     }
                     break;
@@ -130,10 +120,10 @@ class Compiler {
 //                    }
 //                    break;
                 case STATE_DONE:
-                    if (!ParserUtils.isComment(s)) {
+                    //if (!ParserUtils.isComment(s)) {
                         throw new SyntaxException("wrong call syntax");
-                    }
-                    break;
+                    //}
+                    //break;
             }
         }
 
@@ -155,34 +145,32 @@ class Compiler {
         }
     }
 
-    private void compileCall(String src, String[] tokens, StringBuilder out, String firstToken) throws SyntaxException {
+    private void compileCall(TokenString src, OutputFile out) throws SyntaxException {
         List<NamedPair> args = new ArrayList<>();
-        Procedure procedure = parseProcCallArgs(args, tokens, firstToken);
+        Procedure procedure = parseProcCallArgs(args, src);
         if (procedure != null) {
-            String firstSpaces = tokens.length > 0 && tokens[0].trim().isEmpty() ? tokens[0] : "";
             checkCallArguments(procedure, args);
-            out.append("; ").append(src).append("\n");
+            out.addComment(src);
 
             for (NamedPair arg : args) {
                 String argName = arg.name;
                 String regName = procedure.args.get(argName).register;
                 String value = arg.value;
                 if (!regName.equalsIgnoreCase(value)) {
-                    out.append(firstSpaces);
                     addArgumentAssign(out, argName, regName, value);
                 } else {
-                    out.append(firstSpaces).append("; ").append(argName).append(" = ").append(value).append("\n");
+                    out.startNewLine().append(src.getIndent()).append("; ").append(argName).append(" = ").append(value);
                 }
             } // for args
-            out.append(firstSpaces).append(firstToken).append("\t").append(procedure.name).append("\n");
+            out.appendCommand(src, src.getFirstToken(), procedure.name);
             return;
         } // if procedure
 
-        compileDefault(src, tokens, out, firstToken);
+        compileDefault(src, out);
 
     }
 
-    private void addArgumentAssign(StringBuilder out, String argName, String regName, String value) throws SyntaxException {
+    private void addArgumentAssign(OutputFile out, String argName, String regName, String value) throws SyntaxException {
         StringTokenizer tokenizer = new StringTokenizer(value, "+-", true);
         String[] t = new String[2 + tokenizer.countTokens()];
         t[0] = regName;
@@ -192,74 +180,39 @@ class Compiler {
             t[i++] = tokenizer.nextToken();
         }
         try {
-            if (!expressionsCompiler.compile(t, out)) {
+            if (!expressionsCompiler.compile(new TokenString(t), out)) {
                 throw new SyntaxException("wrong value: '" + value + "'");
             }
-            if (out.length() > 0) {
-                out.deleteCharAt(out.length() - 1);
-            }
-            out.append("\t; ").append(argName).append(" = ").append(value).append("\n");
+            out.getLastLineBuilder().append("\t; ").append(argName).append(" = ").append(value);//.append("\n");
         } catch (ExpressionsCompiler.CompileException e) {
             throw new SyntaxException(e.getMessage());
         }
     }
 
 
-    private void compilePushPop(String[] tokens, StringBuilder out) {
+    private void compilePushPop(TokenString src, OutputFile out) {
         List<String> regs = new ArrayList<>();
-        for (String token : tokens) {
+        for (String token : src) {
             if (ParserUtils.isRegister(token)) {
                 regs.add(token);
+            } else {
+                // TODO !!!
             }
         }
         if (regs.size() <= 1) {
-            for (String token : tokens) {
-                out.append(token);
-            }
-        } else {
-            int regNum = 0;
-            for (String reg : regs) {
-                regNum++;
-                for (int i = 0; i < tokens.length; i++) {
-                    String token = tokens[i];
-                    if (token == null) {
-                        continue;
-                    }
-                    boolean isReg = ParserUtils.isRegister(token);
-                    if (!isReg || token.equalsIgnoreCase(reg)) {
-                        out.append(token);
-                        if (isReg) {
-                            tokens[i] = null;
-                            if (regNum < regs.size() && i < tokens.length-1 && tokens[i+1].trim().isEmpty()) {
-                                tokens[i+1] = null;
-                            }
-                        }
-                    }
-                }
-                out.append('\n');
-            }
+            out.add(src);
+            return;
+        }
+
+        for (String reg : regs) {
+            out.appendCommand(src, src.getFirstToken(), reg);
         }
     }
 
 
-    private boolean compileIfGoto(String src, String[] srcTokens, StringBuilder out) throws SyntaxException {
-        List<String> tokens = new ArrayList<>();
-        for (int i = 1; i < srcTokens.length; i++) {
-            String s = srcTokens[i];
-            if ("=".equals(s)) {
-                String prev = srcTokens[i-1];
-                if ("=".equals(prev) || "!".equals(prev) || ">".equals(prev) || "<".equals(prev)) {
-                    srcTokens[i] = prev + s;
-                    srcTokens[i-1] = "";
-                }
-            }
-        }
-        for (String s : srcTokens) {
-            s = s.trim();
-            if (!s.isEmpty() && !ParserUtils.isComment(s)) {
-                tokens.add(s);
-            }
-        }
+    private boolean compileIfGoto(TokenString src, OutputFile out) throws SyntaxException {
+        src.removeEmptyTokens();
+        List<String> tokens = src.getTokens();
         boolean signed;
         if ("s".equals(tokens.get(1))) {
             signed = true;
@@ -283,8 +236,6 @@ class Compiler {
         regs.add(reg);
         String next = tokens.get(index);
         if (".".equals(next)) {
-            //regs = new ArrayList<>();
-            //regs.add(reg);
             index++;
             while (".".equals(next) || ParserUtils.isRegister(next)) {
                 if (!".".equals(next)) {
@@ -296,8 +247,6 @@ class Compiler {
                 }
             }
             index--;
-//        } else {
-//            regs = null;
         }
         String operation = tokens.get(index++);
         String arg = tokens.get(index++);
@@ -317,57 +266,76 @@ class Compiler {
             }
             index--;
         }
-        if (!")".equals(tokens.get(index))) {
-            throw new SyntaxException("Invalid expression");
+        next = tokens.get(index);
+        if (!")".equals(next)) {
+            if (ParserUtils.isConstExpression(arg)) {
+                arg += next;
+                int bc = 0;
+                loop:
+                while (true) {
+                    next = tokens.get(++index);
+                    switch (next) {
+                        case "(":
+                            bc++;
+                            break;
+                        case ")":
+                            if (bc == 0) break loop;
+                            bc--;
+                            break;
+                    }
+                    arg += next;
+                }
+                if (!ParserUtils.isConstExpression(arg)) {
+                    throw new SyntaxException("Invalid expression");
+                }
+            } else {
+                throw new SyntaxException("Invalid expression");
+            }
         }
-//System.out.println(regs + " , " + args + " " + operation);
         Integer argVal = ParserUtils.isNumber(arg) ? ParserUtils.parseValue(arg) : null;
-        String firstSpaces = srcTokens.length > 0 && srcTokens[0].trim().isEmpty() ? srcTokens[0] : "";
         String label = tokens.get(tokens.size()-1);
-        out.append("; ").append(src).append("\n");
+        out.addComment(src);
         String jumpCmd;
         //  BRCS = BRLO, BRCC = BRSH
         switch (operation) {
             case "==":
             case "!=":
-                jumpCmd = "==".equals(operation) ? "breq\t" : "brne\t";
+                jumpCmd = "==".equals(operation) ? "breq" : "brne";
                 if (argVal != null && argVal == 0) {
-                    out.append(firstSpaces).append("tst\t").append(reg).append('\n');
+                    out.appendCommand(src, "tst", reg);
                 } else if (ParserUtils.isRegister(arg)) {
-                    addCompareInstruction(firstSpaces, regs, args, out);
-//                    out.append(firstSpaces).append("cp\t").append(reg).append(", ").append(arg).append('\n');
+                    addCompareInstruction(src, regs, args, out);
                 } else {
-                    out.append(firstSpaces).append("cpi\t").append(reg).append(", ").append(arg).append('\n');
+                    out.appendCommand(src,"cpi", reg, arg);
                 }
-                out.append(firstSpaces).append(jumpCmd).append(label);
+                out.appendCommand(src, jumpCmd, label);
                 break;
             case "<":
                 if (argVal != null && argVal == 0) {
-                    out.append(firstSpaces).append("tst\t").append(reg).append('\n');
-                    jumpCmd = "brmi\t";
+                    out.appendCommand(src,"tst", reg);
+                    jumpCmd = "brmi";
                 } else if (ParserUtils.isRegister(arg)) {
-                    addCompareInstruction(firstSpaces, regs, args, out);
-                    //out.append(firstSpaces).append("cp\t").append(reg).append(", ").append(arg).append('\n');
-                    jumpCmd = signed ? "brlt\t" : "brlo\t";
+                    addCompareInstruction(src, regs, args, out);
+                    jumpCmd = signed ? "brlt" : "brlo";
                 } else {
-                    out.append(firstSpaces).append("cpi\t").append(reg).append(", ").append(arg).append('\n');
-                    jumpCmd = signed ? "brlt\t" : "brlo\t";
+                    out.appendCommand(src, "cpi", reg, arg);
+                    jumpCmd = signed ? "brlt" : "brlo";
                 }
-                out.append(firstSpaces).append(jumpCmd).append(label);
+                out.appendCommand(src, jumpCmd, label);
                 break;
             case ">=":
                 if (argVal != null && argVal == 0) {
-                    out.append(firstSpaces).append("tst\t").append(reg).append('\n');
-                    jumpCmd = "brpl\t";
+                    out.appendCommand(src, "tst", reg);
+                    jumpCmd = "brpl";
                 } else if (ParserUtils.isRegister(arg)) {
                     //out.append(firstSpaces).append("cp\t").append(reg).append(", ").append(arg).append('\n');
-                    addCompareInstruction(firstSpaces, regs, args, out);
-                    jumpCmd = signed ? "brge\t" : "brsh\t";
+                    addCompareInstruction(src, regs, args, out);
+                    jumpCmd = signed ? "brge" : "brsh";
                 } else {
-                    out.append(firstSpaces).append("cpi\t").append(reg).append(", ").append(arg).append('\n');
-                    jumpCmd = signed ? "brge\t" : "brsh\t";
+                    out.appendCommand(src, "cpi", reg, arg);
+                    jumpCmd = signed ? "brge" : "brsh";
                 }
-                out.append(firstSpaces).append(jumpCmd).append(label);
+                out.appendCommand(src, jumpCmd, label);
                 break;
 
             case ">":
@@ -376,34 +344,33 @@ class Compiler {
                 // x > k  ->   x >= k+1
                 if (ParserUtils.isRegister(arg)) {
                     //out.append(firstSpaces).append("cp\t").append(arg).append(", ").append(reg).append('\n');
-                    addCompareInstruction(firstSpaces, args, regs, out);
-                    jumpCmd = signed ? "brlt\t" : "brlo\t";
+                    addCompareInstruction(src, args, regs, out);
+                    jumpCmd = signed ? "brlt" : "brlo";
                 } else {
-                    out.append(firstSpaces).append("cpi\t").append(reg).append(", ").append(arg).append("+1").append('\n');
-                    jumpCmd = signed ? "brge\t" : "brsh\t";
+                    out.appendCommand(src, "cpi", reg, arg + "+1");
+                    jumpCmd = signed ? "brge" : "brsh";
                 }
-                out.append(firstSpaces).append(jumpCmd).append(label);
+                out.appendCommand(src, jumpCmd, label);
                 break;
             case "<=":
                 // x <= y  ->  y >= x
                 // x >= k  ->  x > k-1
                 if (ParserUtils.isRegister(arg)) {
-                    //out.append(firstSpaces).append("cp\t").append(arg).append(", ").append(reg).append('\n');
-                    addCompareInstruction(firstSpaces, args, regs, out);
-                    jumpCmd = signed ? "brge\t" : "brsh\t";
+                    addCompareInstruction(src, args, regs, out);
+                    jumpCmd = signed ? "brge" : "brsh";
                 } else {
-                    out.append(firstSpaces).append("cpi\t").append(reg).append(", ").append(arg).append("-1").append('\n');
-                    jumpCmd = signed ? "brlt\t" : "brlo\t";
+                    out.appendCommand(src, "cpi", reg, arg + "-1");
+                    jumpCmd = signed ? "brlt" : "brlo";
                 }
-                out.append(firstSpaces).append(jumpCmd).append(label);
+                out.appendCommand(src, jumpCmd, label);
                 break;
-                default:
-                    throw new SyntaxException("unsupported operation");
+            default:
+                throw new SyntaxException("unsupported operation");
         }
         return true;
     }
 
-    private void addCompareInstruction(String firstSpaces, List<String> arg1, List<String> arg2, StringBuilder out) throws SyntaxException {
+    private void addCompareInstruction(TokenString src, List<String> arg1, List<String> arg2, OutputFile out) throws SyntaxException {
         if (arg1.size() != arg2.size()) {
             throw new SyntaxException("unsupported operation");
         }
@@ -411,35 +378,36 @@ class Compiler {
             int j = arg1.size() - 1 - i;
             String reg = arg1.get(j);
             String arg = arg2.get(j);
-            String cmd = i == 0 ? "cp\t" : "cpc\t";
-            out.append(firstSpaces).append(cmd).append(reg).append(", ").append(arg).append('\n');
+            String cmd = i == 0 ? "cp" : "cpc";
+            out.appendCommand(src, cmd, reg, arg);
         }
-
     }
 
 
-    private void compileDefault(String src, String[] tokens, StringBuilder out, String firstToken) throws SyntaxException {
-        boolean skipCompilation = ParserUtils.isInstruction(firstToken);
-        Variable var = parser.getVariable(firstToken);
-        if (var != null && var.isPointer() && src.trim().startsWith(firstToken + ":")) {
-            skipCompilation = true;
+    private boolean canBeCompiled(TokenString src) {
+        String first = src.getFirstToken();
+        if (src.firstTokenIs(".") || ParserUtils.isInstruction(first) || first.startsWith("#")) {
+            return false;
         }
-        if (!skipCompilation) {
-            try {
-                StringBuilder tempOut = new StringBuilder();
-                if (expressionsCompiler.compile(tokens, tempOut)) {
-                    if (tempOut.length() > 0) {
-                        tempOut.deleteCharAt(tempOut.length() - 1);
-                    }
-                    out.append("; ").append(src).append("\n").append(tempOut);
-                    return;
-                }
-            } catch (ExpressionsCompiler.CompileException e) {
-                throw new SyntaxException(e.getMessage() != null ? e.getMessage() : "expression error", e);
+        Variable var = parser.getVariable(src.getFirstToken());
+        if (var != null && var.isPointer() && src.size() >= 2 && ":".equals(src.getToken(1))) {
+            return false;
+        }
+        return true;
+    }
+
+
+    private void compileDefault(TokenString src, OutputFile out) throws SyntaxException {
+        if (!canBeCompiled(src)) {
+            out.add(src);
+            return;
+        }
+        try {
+            if (!expressionsCompiler.compile(src, out)) {
+                out.add(src);
             }
-        }
-        for (String token : tokens) {
-            out.append(token);
+        } catch (ExpressionsCompiler.CompileException e) {
+            throw new SyntaxException(e.getMessage() != null ? e.getMessage() : "expression error", e);
         }
     }
 

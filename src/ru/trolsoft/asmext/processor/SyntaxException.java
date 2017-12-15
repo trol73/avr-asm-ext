@@ -1,8 +1,8 @@
-package ru.trolsoft.asmext;
+package ru.trolsoft.asmext.processor;
 
-class SyntaxException extends Exception {
+public class SyntaxException extends Exception {
 
-    int line;
+    public int line;
 
     SyntaxException() {
         super();

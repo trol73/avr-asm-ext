@@ -1,8 +1,6 @@
-package ru.trolsoft.asmext;
+package ru.trolsoft.asmext.data;
 
 import org.junit.jupiter.api.Test;
-import ru.trolsoft.asmext.data.Alias;
-import ru.trolsoft.asmext.data.NamedPair;
 
 import static org.junit.jupiter.api.Assertions.*;
 

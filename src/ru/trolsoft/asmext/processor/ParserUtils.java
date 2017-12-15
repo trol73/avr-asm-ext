@@ -1,4 +1,4 @@
-package ru.trolsoft.asmext;
+package ru.trolsoft.asmext.processor;
 
 import ru.trolsoft.asmext.data.Variable;
 import ru.trolsoft.avr.Instructions;
@@ -6,7 +6,7 @@ import ru.trolsoft.avr.Registers;
 
 import java.util.List;
 
-class ParserUtils {
+public class ParserUtils {
 
     static boolean isValidName(String name) {
         if (name == null || name.isEmpty()) {
@@ -49,9 +49,9 @@ class ParserUtils {
         return Instructions.isInstruction(name);
     }
 
-    static boolean isComment(String token) {
-        return token.startsWith(";") || token.startsWith("//");
-    }
+//    public static boolean isComment(String token) {
+//        return token.startsWith(";") || token.startsWith("//");
+//    }
 
     static int parseValue(String s) {
         int sign;
@@ -115,6 +115,17 @@ class ParserUtils {
         if (s == null || s.trim().isEmpty()) {
             return false;
         }
+        // TODO --------
+        if (s.contains("<<") || s.contains("<<")) {
+            return true;
+        }
+        String upper = s.toUpperCase();
+        if (upper.contains("BYTE")) {
+            if (upper.contains("BYTE1(") || upper.contains("BYTE2(") || upper.contains("BYTE3(") || upper.contains("BYTE4(")) {
+                return true;
+            }
+        }
+        // TODO ---------
         int bc = 0;
         char last = ' ';
         boolean isHex = false;
@@ -146,7 +157,7 @@ class ParserUtils {
                 continue;
             }
             isHex = false;
-            if (!isDigitChar(c) && " \t+-*/()".indexOf(c) < 0) {
+            if (!isDigitChar(c) && " \t+-*/()<>|".indexOf(c) < 0) {
                 return false;
             }
             if (c == '(') {

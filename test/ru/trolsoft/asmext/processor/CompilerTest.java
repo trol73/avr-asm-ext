@@ -1,14 +1,16 @@
-package ru.trolsoft.asmext;
+package ru.trolsoft.asmext.processor;
 
 import org.junit.jupiter.api.Test;
 import ru.trolsoft.asmext.data.Alias;
 import ru.trolsoft.asmext.data.Procedure;
+import ru.trolsoft.asmext.files.OutputFile;
+import ru.trolsoft.asmext.utils.TokenString;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class CompilerTest {
     Parser parser = new Parser();
-    Compiler compiler = new Compiler(parser);
+    ru.trolsoft.asmext.processor.Compiler compiler = new ru.trolsoft.asmext.processor.Compiler(parser);
 
 
     private static String strip(String s) {
@@ -16,19 +18,18 @@ class CompilerTest {
     }
 
     void testLine(String src, String res) throws SyntaxException {
-        StringBuilder out = new StringBuilder();
-        compiler.compile(src, parser.splitToTokens(src), out);
-
-        if (out.length() > 0 && out.charAt(0) == ';') {
-            while (out.length() > 0) {
-                char ch = out.charAt(0);
-                out.deleteCharAt(0);
-                if (ch == '\n') {
-                    break;
-                }
+        OutputFile out = new OutputFile();
+        compiler.compile(new TokenString(src), out);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < out.size(); i++) {
+            String s = out.get(i).trim();
+            if (s.startsWith(";") || s.startsWith("//")) {
+                continue;
             }
+            sb.append(s).append("\n");
         }
-        String outStr = strip(out.toString());
+
+        String outStr = strip(sb.toString());
         res = strip(res);
 //        System.out.println(outStr);
 //        System.out.println(res);
@@ -70,8 +71,11 @@ class CompilerTest {
         testLine("if u(r1 <= r2) goto lbl", "cp\tr2, r1\nbrsh\tlbl");
         testLine("if s(r1 <= r2) goto lbl", "cp\tr2, r1\nbrge\tlbl");
 
-        testLine("if (r1 == 0) goto lbl ; comment", "tst\tr1\nbreq\tlbl");
-        testLine("if (r1 == 0) goto lbl // comment", "tst\tr1\nbreq\tlbl");
+        testLine("if (r1 == 0) goto lbl ; comment", "tst\tr1\t\t; comment\nbreq\tlbl\t\t; comment");
+        testLine("if (r1 == 0) goto lbl // comment", "tst\tr1\t\t// comment\nbreq\tlbl\t\t// comment");
+
+        testLine("if (r1 < '9'+1) goto lbl", "cpi\tr1, '9'+1\nbrlo\tlbl");
+
     }
 
     @Test
@@ -82,23 +86,23 @@ class CompilerTest {
     @Test
     void testProcCalls() throws SyntaxException {
         parser = new Parser();
-        compiler = new Compiler(parser);
+        compiler = new ru.trolsoft.asmext.processor.Compiler(parser);
 
         Procedure proc = new Procedure("my_proc");
         proc.addArg(new Alias("x", "r24"));
         proc.addArg(new Alias("y", "r22"));
         parser.procedures.put(proc.name, proc);
 
-        testLine("rcall my_proc (x: 1, y: r0) // comment", "ldi\tr24, 1\t ; x = 1\nmov\tr22, r0\t ; y = r0\nrcall\tmy_proc");
-        testLine("rjmp my_proc (x: r24, y: r0) ; comment", "; x = r24\nmov\tr22, r0\t ; y = r0\nrjmp\tmy_proc");
-        testLine("rjmp my_proc (x: r24 + 1, y: r0) ; comment", "inc r24 ; x = r24+1\nmov\tr22, r0\t ; y = r0\nrjmp\tmy_proc");
-        testLine("rjmp my_proc (x: r24 + 1*2, y: r0) ; comment", "subi r24, -(1*2) ; x = r24+1*2\nmov\tr22, r0\t ; y = r0\nrjmp\tmy_proc");
+        testLine("rcall my_proc (x: 1, y: r0) // comment", "ldi\tr24, 1\t ; x = 1\nmov\tr22, r0\t ; y = r0\nrcall\tmy_proc\t\t// comment");
+        testLine("rjmp my_proc (x: r24, y: r0) ; comment", "mov\tr22, r0\t ; y = r0\nrjmp\tmy_proc\t\t; comment");
+        testLine("rjmp my_proc (x: r24 + 1, y: r0) ; comment", "inc r24 ; x = r24+1\nmov\tr22, r0\t ; y = r0\nrjmp\tmy_proc\t\t; comment");
+        testLine("rjmp my_proc (x: r24 + 1*2, y: r0) ; comment", "subi r24, -(1*2) ; x = r24+1*2\nmov\tr22, r0\t ; y = r0\nrjmp\tmy_proc\t\t; comment");
 
         proc = new Procedure("my_proc");
         parser.procedures.clear();
         proc.addArg(new Alias("x", "r24"));
         parser.procedures.put(proc.name, proc);
-        testLine("rcall my_proc (10) // comment", "ldi\tr24, 10\t ; x = 10\nrcall\tmy_proc");
+        testLine("rcall my_proc (10) // comment", "ldi\tr24, 10\t ; x = 10\nrcall\tmy_proc\t\t// comment");
         testLine("rcall my_proc (xl)", "mov\tr24, xl\t ; x = xl\nrcall\tmy_proc");
 
         parser.parseLine(".extern ext_proc (var: r24)");
@@ -109,7 +113,7 @@ class CompilerTest {
 
         parser = new Parser();
         parser.gcc = false;
-        parser.parseLine(".def rmp=r24");
+        parser.preloadLine(".def rmp=r24");
         parser.parseLine(".proc my_proc");
         parser.parseLine(".args val(rmp)");
         parser.parseLine(".endproc");

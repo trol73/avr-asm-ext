@@ -1,8 +1,9 @@
 package ru.trolsoft.asmext;
 
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
+import ru.trolsoft.asmext.processor.Parser;
+import ru.trolsoft.asmext.processor.SyntaxException;
 
 public class Main {
 
@@ -22,12 +23,7 @@ public class Main {
         }
         try {
             parser.parse(srcFile);
-            try (FileWriter writer = new FileWriter(out)) {
-                for (String s : parser.getOutput()) {
-                    writer.write(s);
-                    writer.write('\n');
-                }
-            }
+            parser.getOutput().writeToFile(out);
         } catch (IOException e1) {
             System.out.println(e1.getMessage());
             System.exit(1);
@@ -39,6 +35,30 @@ public class Main {
     }
 }
 /*
+
+	rmp = ' '
+	R0 = rmp
+	r0 = rmp = ' '
+
+	rmp = 4 ; 1 seconds
+	sUartMonFCnt = rmp
+	sUartMonFCnt = rmp = 4
+
+	rmp = r0 ; copy original again
+	andi rmp, 0x0F ; clear upper nibble
+
+
+	rmp = BYTE1(100000000) ; check overflow
+	cp rRes1, rmp
+	rmp = BYTE2(100000000)
+	cpc rRes2, rmp
+	rmp = BYTE3(100000000)
+	cpc rRes3, rmp
+	rmp = BYTE4(100000000)
+	cpc rRes4, rmp
+	brcs @1
+
+
 
 if (r2.r1 < ZH.ZL) goto @2 ; ended subtraction
 
@@ -64,6 +84,8 @@ if (r2.r1 < ZH.ZL) goto @2 ; ended subtraction
 	if (ZL == 14) goto Interval_enc_clockwise
 
 
+	; rmp = $data[Z++]
+	ld rmp, Z+ ; read next char
 
 
 
