@@ -1,17 +1,15 @@
 package ru.trolsoft.asmext.processor;
 
-import ru.trolsoft.asmext.data.Variable;
 import ru.trolsoft.asmext.data.Constant;
+import ru.trolsoft.asmext.data.Variable;
+import ru.trolsoft.asmext.data.Variable.Type;
+import ru.trolsoft.asmext.files.OutputFile;
+import ru.trolsoft.asmext.utils.TokenString;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static ru.trolsoft.asmext.processor.ParserUtils.isRegister;
-import static ru.trolsoft.asmext.processor.ParserUtils.isPair;
-import static ru.trolsoft.asmext.processor.ParserUtils.wrapToBrackets;
-import ru.trolsoft.asmext.data.Variable.Type;
-import ru.trolsoft.asmext.files.OutputFile;
-import ru.trolsoft.asmext.utils.TokenString;
+import static ru.trolsoft.asmext.processor.ParserUtils.*;
 
 class ExpressionsCompiler {
 
@@ -40,11 +38,14 @@ class ExpressionsCompiler {
         }
         String operation = syntaxTokens.get(1);
         String dest = syntaxTokens.get(0);
-        if (ParserUtils.isRegister(dest) && syntaxTokens.size() != 3 && ("+=".equals(operation) || "-=".equals(operation))) {
-            syntaxTokens.set(1, "=");
-            syntaxTokens.add(2, dest);
-            syntaxTokens.add(3, "+=".equals(operation) ? "+" : "-");
-            operation = "=";
+        if (ParserUtils.isRegister(dest) && syntaxTokens.size() != 3) {
+            if ("+=".equals(operation) || "-=".equals(operation)) {
+                syntaxTokens.set(1, "=");
+                syntaxTokens.add(2, dest);
+                String newOperation = operation.substring(0, 1);
+                syntaxTokens.add(3, newOperation);
+                operation = "=";
+            }
         }
         boolean pairMatch = isPair(dest) && ("++".equals(operation) || "--".equals(operation) || "+=".equals(operation) || "-=".equals(operation));
         if (ParserUtils.isRegister(dest) || pairMatch) {
@@ -76,6 +77,26 @@ class ExpressionsCompiler {
                         throw new CompileException();
                     }
                     return true;
+                case "&=":
+                    if (pairMatch && syntaxTokens.size() != 3) {
+                        unsupportedOperationError();
+                    } else if (syntaxTokens.size() == 3) {
+                        //!!!!! syntaxTokens.size() == 19
+                        andReg(src, dest, syntaxTokens.get(2), out);
+                    } else {
+                        throw new CompileException();
+                    }
+                    return true;
+                case "|=":
+                    if (pairMatch && syntaxTokens.size() != 3) {
+                        unsupportedOperationError();
+                    } else if (syntaxTokens.size() == 3) {
+                        orReg(src, dest, syntaxTokens.get(2), out);
+                    } else {
+                        throw new CompileException();
+                    }
+                    return true;
+
                 case ".":
                     return compileGroup(src, syntaxTokens, out);
             }
@@ -232,6 +253,30 @@ class ExpressionsCompiler {
                         }
                     } else if (ParserUtils.isRegister(arg)) {
                         out.appendCommand(src, "sub", destReg, arg);
+                    } else {
+                        throw new CompileException("wrong argument: " + arg);
+                    }
+                    break;
+                case "&":
+                    if (isConstExpression(arg)) {
+                        if (!ParserUtils.isNumber(arg)) {
+                            arg = wrapToBrackets(arg);
+                        }
+                        out.appendCommand(src, "andi", destReg, arg);
+                    } else if (ParserUtils.isRegister(arg)) {
+                        out.appendCommand(src, "and", destReg, arg);
+                    } else {
+                        throw new CompileException("wrong argument: " + arg);
+                    }
+                    break;
+                case "|":
+                    if (isConstExpression(arg)) {
+                        if (!ParserUtils.isNumber(arg)) {
+                            arg = wrapToBrackets(arg);
+                        }
+                        out.appendCommand(src, "ori", destReg, arg);
+                    } else if (ParserUtils.isRegister(arg)) {
+                        out.appendCommand(src, "or", destReg, arg);
                     } else {
                         throw new CompileException("wrong argument: " + arg);
                     }
@@ -600,6 +645,26 @@ class ExpressionsCompiler {
                 out.appendCommand(src, "sub", dest + "L", args.get(2));
                 out.appendCommand(src, "sbc", dest + "H", args.get(0));
             }
+        } else {
+            unsupportedOperationError();
+        }
+    }
+
+    private void andReg(TokenString src, String destReg, String argument, OutputFile out) throws CompileException {
+        if (isRegister(argument)) {
+            out.appendCommand(src, "and", destReg, argument);
+        } else if (isConstExpression(argument)) {
+            out.appendCommand(src, "andi", destReg, argument);
+        } else {
+            unsupportedOperationError();
+        }
+    }
+
+    private void orReg(TokenString src, String destReg, String argument, OutputFile out) throws CompileException {
+        if (isRegister(argument)) {
+            out.appendCommand(src, "or", destReg, argument);
+        } else if (isConstExpression(argument)) {
+            out.appendCommand(src, "ori", destReg, argument);
         } else {
             unsupportedOperationError();
         }

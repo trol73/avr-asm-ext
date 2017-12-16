@@ -171,7 +171,7 @@ public class TokenString implements Comparable<TokenString>, CharSequence, Itera
         if (line == null) {
             return result;
         }
-        final String delim = " \t,.+-*/=():;<>!";
+        final String delim = " \t,.+-*/=():;<>!&|";
         StringTokenizer tokenizer = new StringTokenizer(line, delim, true);
         boolean commentStarted = false;
         while (tokenizer.hasMoreElements()) {
@@ -205,7 +205,8 @@ public class TokenString implements Comparable<TokenString>, CharSequence, Itera
             }
 
             if ("=".equals(next)) {
-                if ("=".equals(prev) || "!".equals(prev) || ">".equals(prev) || "<".equals(prev) || "+".equals(prev) || "-".equals(prev)) {
+                if ("=".equals(prev) || "!".equals(prev) || ">".equals(prev) || "<".equals(prev) || "+".equals(prev)
+                        || "-".equals(prev) || "&".equals(prev) || "|".equals(prev)) {
                     result.set(result.size()-1, prev + next);
                     continue;
                 }

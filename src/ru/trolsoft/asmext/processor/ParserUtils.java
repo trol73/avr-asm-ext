@@ -183,7 +183,7 @@ public class ParserUtils {
             return false;
         }
         s = s.trim();
-        if (s.length() == 1 && "+-*/".contains(s)) {
+        if (s.length() == 1 && "+-*/|".contains(s)) {
             return true;
         }
         if ("<<".equals(s) || ">>".equals(s)) {
@@ -196,6 +196,10 @@ public class ParserUtils {
         tokens.removeIf(s -> s == null || s.trim().isEmpty());
     }
 
+    static boolean isSomeConstant(String s) {
+        return isNumber(s) || (!isRegister(s) && isValidName(s));
+    }
+
     static void mergeTokens(List<String> tokens) {
         removeEmptyTokens(tokens);
         while (true) {
@@ -204,13 +208,17 @@ public class ParserUtils {
                 String curr = tokens.get(i);
                 String prev = i > 0 ? tokens.get(i - 1) : null;
                 String next = i < tokens.size() - 1 ? tokens.get(i + 1) : null;
-
                 if (isConstExpression(prev) && isConstExpression(next) && isSimpleMatchOperator(curr)) {
                     tokens.set(i, prev + curr + next);
                     tokens.set(i-1, null);
                     tokens.set(i+1, null);
                     found = true;
                 } else if ("(".equals(prev) && ")".equals(next) && isConstExpression(curr)) {
+                    tokens.set(i, prev + curr + next);
+                    tokens.set(i-1, null);
+                    tokens.set(i+1, null);
+                    found = true;
+                } else if ((">>".equals(curr) || "<<".equals(curr) || "|".equals(curr)) && isSomeConstant(prev) && isSomeConstant(next)) {
                     tokens.set(i, prev + curr + next);
                     tokens.set(i-1, null);
                     tokens.set(i+1, null);

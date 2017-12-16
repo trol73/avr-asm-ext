@@ -48,6 +48,11 @@ class ExpressionsCompilerTest {
         test(ec, ta("r5", "=", "0xAB"), "ldi\tr5, 0xAB");
         test(ec, ta("r15", "=", "1", "<<", "5"), "ldi\tr15, 1<<5");
         test(ec, ta("r15", "=", "(", "1", "<<", "5", ")", "|", "0x12"), "ldi\tr15, (1<<5)|0x12");
+
+        test(ec, ta("r15", "=", "r20", "&", "0x0F"), "mov\tr15, r20\nandi\tr15, 0x0F");
+        test(ec, ta("r15", "=", "r20", "|", "0x0F"), "mov\tr15, r20\nori\tr15, 0x0F");
+        test(ec, ta("r15", "=", "r20", "&", "r0"), "mov\tr15, r20\nand\tr15, r0");
+        test(ec, ta("r15", "=", "r20", "|", "r0"), "mov\tr15, r20\nor\tr15, r0");
     }
 
     @Test
@@ -82,6 +87,9 @@ class ExpressionsCompilerTest {
         test(ec, ta("r24", "=", "r24", "+", "r2", "+", "r1"), "add\tr24, r2\nadd\tr24, r1");
         test(ec, ta("r24", "+=", "r2", "+", "r1"), "add\tr24, r2\nadd\tr24, r1");
         test(ec, ta("r24", "+", "=", "r2", "+", "r1"), "add\tr24, r2\nadd\tr24, r1");
+
+        test(ec, ta("r1", "&=", "0x10"), "andi\tr1, 0x10");
+        test(ec, ta("r1", "|=", "0x20"), "ori\tr1, 0x20");
     }
 
 

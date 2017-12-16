@@ -163,4 +163,15 @@ public class OutputFile {
     public StringBuilder getLastLineBuilder() {
         return lastLine;
     }
+
+
+    public String getLastLine() {
+        if (lastLine != null) {
+            return lastLine.toString();
+        }
+        if (lines.isEmpty()) {
+            return null;
+        }
+        return lines.get(lines.size()-1);
+    }
 }

@@ -44,9 +44,6 @@ public class Main {
 	sUartMonFCnt = rmp
 	sUartMonFCnt = rmp = 4
 
-	rmp = r0 ; copy original again
-	andi rmp, 0x0F ; clear upper nibble
-
 
 	rmp = BYTE1(100000000) ; check overflow
 	cp rRes1, rmp

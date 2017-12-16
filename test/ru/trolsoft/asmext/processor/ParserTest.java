@@ -437,6 +437,12 @@ class ParserTest {
         parser.parseLine("r19 = (1<<URSEL)|(1<<UCSZ1)|(1<<UCSZ0)");
 
         parser.parseLine("r20 = BYTE1(cFreq/256)");
+
+        parser.parseLine(".equ FE=1");
+        parser.parseLine(".equ DOR=0");
+        parser.parseLine(".equ PE=4");
+        parser.parseLine("r11 &= (1<<FE)|(1<<DOR)|(1<<PE)");
+        assertEquals(parser.getOutput().getLastLine(), "andi\tr11, (1<<FE)|(1<<DOR)|(1<<PE)");
     }
 
 
