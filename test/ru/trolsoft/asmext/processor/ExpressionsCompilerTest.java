@@ -27,8 +27,12 @@ class ExpressionsCompilerTest {
 
     private void test(ExpressionsCompiler ec, TokenString tokens, String outVal) throws CompileException {
         OutputFile out = new OutputFile();
-        ec.compile(tokens, out);
-        assertEquals(out.toString().trim(), outVal);
+        ec.compile(tokens, ec.parser.buildExpression(tokens), out);
+        assertEquals(outVal, out.toString().trim());
+    }
+
+    private boolean compile(ExpressionsCompiler ec, TokenString src) throws CompileException {
+        return ec.compile(src, new Expression(src), new OutputFile());
     }
 
     @Test
@@ -120,6 +124,7 @@ class ExpressionsCompilerTest {
         test(ec, ta("r21", ".", "r20", "+=", "var_ptr"), "subi\tr20, -LOW(var_ptr)\nsbci\tr21, -HIGH(var_ptr)");
         test(ec, ta("r21", ".", "r20", "-=", "var_ptr"), "subi\tr20, LOW(var_ptr)\nsbci\tr21, HIGH(var_ptr)");
         test(ec, ta("r2", ".", "r1", "-=", "Z"), "sub\tr1, ZL\nsbc\tr2, ZH");
+        test(ec, ta("r2", ".", "r1", "-=", "ZH.ZL"), "sub\tr1, ZL\nsbc\tr2, ZH");
     }
 
     @Test
@@ -132,7 +137,7 @@ class ExpressionsCompilerTest {
 
         test(ec, ta("r1", ".", "r0", "=", "Y"), "movw\tr0, YL");
         test(ec, ta("r10", ".", "r0", "=", "Z"), "mov\tr0, ZL\nmov\tr10, ZH");
-        test(ec, ta("r25", ".", "r24", "=", "5000"), "ldi\tr25, 0x13\nldi\tr24, 0x88");
+        test(ec, ta("r25", ".", "r24", "=", "5000"), "ldi\tr24, 0x88\nldi\tr25, 0x13");
 
         test(ec, ta("r4", ".", "r3", ".", "r2", ".", "r1", "-=", "r8", ".", "ZH", ".", "ZL", ".", "r0"),
                 "sub\tr1, r0\nsbc\tr2, ZL\nsbc\tr3, ZH\nsbc\tr4, r8");
@@ -141,21 +146,22 @@ class ExpressionsCompilerTest {
         test(ec, ta("r4", ".", "r3", ".", "r2", ".", "r1", "=", "r8", ".", "ZH", ".", "ZL", ".", "r0"),
                 "mov\tr1, r0\nmov\tr2, ZL\nmov\tr3, ZH\nmov\tr4, r8");
 
-        boolean error;
-        try {
-            ec.compile(ta("r23", ".", "r22", "10"), new OutputFile());
-            error = false;
-        } catch (CompileException e) {
-            error = true;
-        }
-        assertTrue(error);
-        try {
-            ec.compile(ta("r23", ".", "r22", "unknown"), new OutputFile());
-            error = false;
-        } catch (CompileException e) {
-            error = true;
-        }
-        assertTrue(error);
+        test(ec, ta("r17", ".", "r16", ".", "r15", "=", "0x123456"), "ldi\tr15, 0x56\nldi\tr16, 0x34\nldi\tr17, 0x12");
+
+        assertFalse(compile(ec, ta("r23", ".", "r22", "10")));
+        assertFalse(compile(ec, ta("r23", ".", "r22", "unknown")));
+    }
+
+    @Test
+    void testPairMem() throws SyntaxException, CompileException {
+        Parser parser = new Parser();
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+
+        parser.parseLine(".extern UART_RxHead : word");
+        test(ec, ta("r31", ".", "r30", "=", "UART_RxHead"), "lds\tr31, UART_RxHead+1\nlds\tr30, UART_RxHead");
+        test(ec, ta("Z", "=", "UART_RxHead"), "lds\tZH, UART_RxHead+1\nlds\tZL, UART_RxHead");
+        //r31.r30 = UART_RxHead
+        //Z = UART_RxHead
     }
 
     @Test
@@ -166,7 +172,7 @@ class ExpressionsCompilerTest {
         boolean error;
 
         try {
-            ec.compile(ta("r0", "=", "undefined"), out);
+            compile(ec, ta("r0", "=", "undefined"));
             error = false;
         } catch (CompileException e) {
             error = true;
@@ -224,9 +230,11 @@ class ExpressionsCompilerTest {
         parser = new Parser();
         try {
             parser.parseLine("unknown = r1");
-        } catch (SyntaxException ignore) {}
-        assertTrue(parser.getOutput().size() == 1);
-        assertEquals(parser.getOutput().get(0), "unknown=r1");
+            error = false;
+        } catch (SyntaxException e) {
+            error = true;
+        }
+        assertTrue(error);
 
         try {
             parser.parseLine("Z += unknown");
@@ -238,6 +246,7 @@ class ExpressionsCompilerTest {
 
         try {
             parser.parseLine("r2.r1 -= ZH");
+            error = false;
         } catch (SyntaxException e) {
             error = true;
         }
@@ -260,13 +269,13 @@ class ExpressionsCompilerTest {
         test(ec, ta("X", "-=", "Z"), "sub\tXL, ZL\nsbc\tXH, ZH");
 
         parser.gcc = false;
-        test(ec, ta("Y", "=", "0x1234"), "ldi\tYL, LOW(0x1234)\nldi\tYH, HIGH(0x1234)");
+        test(ec, ta("Y", "=", "0x1234"), "ldi\tYL, 0x34\nldi\tYH, 0x12");
         test(ec, ta("Y", "=", "pv"), "ldi\tYL, LOW(pv)\nldi\tYH, HIGH(pv)");
         test(ec, ta("Z", "=", "ppv"), "ldi\tZL, LOW(2*ppv)\nldi\tZH, HIGH(2*ppv)");
         test(ec, ta("Z", "=", "pv", "+", "2"), "ldi\tZL, LOW(pv+2)\nldi\tZH, HIGH(pv+2)");
 
         parser.gcc = true;
-        test(ec, ta("Y", "=", "0x1234"), "ldi\tYL, (0x1234 & 0xFF)\nldi\tYH, (0x1234 >> 8)");
+        test(ec, ta("Y", "=", "0x1234"), "ldi\tYL, 0x34\nldi\tYH, 0x12");
         test(ec, ta("Y", "=", "pv"), "ldi\tYL, lo8(pv)\nldi\tYH, hi8(pv)");
         test(ec, ta("Z", "=", "ppv"), "ldi\tZL, lo8(ppv)\nldi\tZH, hi8(ppv)");
 
@@ -296,6 +305,58 @@ class ExpressionsCompilerTest {
         test(ec, ta("Z", "-=", "ppv"), "subi\tZL, LOW(2*ppv)\n" +
                 "sbci\tZH, HIGH(2*ppv)");
 
+    }
+
+
+    @Test
+    void testMultipleMove() throws SyntaxException, CompileException {
+        Parser parser = new Parser();
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+
+        parser.parseLine(".extern var_b : byte");
+        parser.parseLine(".extern var_w : word");
+
+        test(ec, ta("var_b", "=", "r21", "=", "100"), "ldi\tr21, 100\nsts\tvar_b, r21");
+        test(ec, ta("var_w", "=", "r21.r20", "=", "1000"), "ldi\tr20, 0xe8\nldi\tr21, 0x03\nsts\tvar_w+1, r21\nsts\tvar_w, r20");
+
+        test(ec, ta("var_b", "=", "r16", "=", "var_b", "-", "1"), "lds\tr16, var_b\ndec\tr16\nsts\tvar_b, r16");
+
+        boolean error;
+        try {
+            test(ec, ta("=", "r21", "=", "100"), "ldi\tr21, 100\nsts\tvar_b, r21");
+            error = false;
+        } catch (CompileException e) {
+            error = true;
+            assertEquals("unexpected expression", e.getMessage());
+        }
+        assertTrue(error);
+
+        try {
+            test(ec, ta("var_b", "=", "r21", "="), "ldi\tr21, 100\nsts\tvar_b, r21");
+            error = false;
+        } catch (CompileException e) {
+            error = true;
+            assertEquals("empty expression", e.getMessage());
+        }
+        assertTrue(error);
+    }
+
+
+    @Test
+    void testShifts() throws CompileException {
+        Parser parser = new Parser();
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+
+        test(ec, ta("r1", "<<=", "1"), "lsl\tr1");
+        test(ec, ta("r10", "<<=", "2"), "lsl\tr10\nlsl\tr10");
+        test(ec, ta("r1", ">>=", "1"), "lsr\tr1");
+        test(ec, ta("r10", ">>=", "2"), "lsr\tr10\nlsr\tr10");
+
+        test(ec, ta("r1", ".", "r2", "<<=", "1"), "lsl\tr2\nrol\tr1");
+        test(ec, ta("r1", ".", "r2", ">>=", "1"), "lsr\tr2\nror\tr1");
+
+        test(ec, ta("r1", ".", "r2", "<<=", "2"), "lsl\tr2\nrol\tr1\nlsl\tr2\nrol\tr1");
+        test(ec, ta("r1", ".", "r2", ">>=", "2"), "lsr\tr2\nror\tr1\nlsr\tr2\nror\tr1");
     }
 
 

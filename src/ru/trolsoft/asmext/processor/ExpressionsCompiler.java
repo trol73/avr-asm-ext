@@ -1,19 +1,15 @@
 package ru.trolsoft.asmext.processor;
 
-import ru.trolsoft.asmext.data.Constant;
 import ru.trolsoft.asmext.data.Variable;
 import ru.trolsoft.asmext.data.Variable.Type;
 import ru.trolsoft.asmext.files.OutputFile;
 import ru.trolsoft.asmext.utils.TokenString;
 
-import java.util.ArrayList;
 import java.util.List;
-
-import static ru.trolsoft.asmext.processor.ParserUtils.*;
 
 class ExpressionsCompiler {
 
-    private Parser parser;
+    Parser parser;
 
     ExpressionsCompiler(Parser parser) {
         this.parser = parser;
@@ -21,264 +17,304 @@ class ExpressionsCompiler {
 
     static class CompileException extends Exception {
 
-        CompileException() {
-            super();
-        }
-
         CompileException(String msg) {
             super(msg);
         }
     }
 
-    boolean compile(TokenString src, OutputFile out) throws CompileException {
-        List<String> syntaxTokens = src.getTokens();
-        ParserUtils.mergeTokens(syntaxTokens);
-        if (syntaxTokens.size() < 2) {
+    boolean compile(TokenString src, Expression expr, OutputFile out) throws CompileException {
+        if (expr.size() < 2) {
             return false;
         }
-        String operation = syntaxTokens.get(1);
-        String dest = syntaxTokens.get(0);
-        if (ParserUtils.isRegister(dest) && syntaxTokens.size() != 3) {
-            if ("+=".equals(operation) || "-=".equals(operation)) {
-                syntaxTokens.set(1, "=");
-                syntaxTokens.add(2, dest);
-                String newOperation = operation.substring(0, 1);
-                syntaxTokens.add(3, newOperation);
-                operation = "=";
+        Token operation = expr.get(1);
+        Token dest = expr.get(0);
+        if (dest.isRegister() && expr.size() != 3) {
+            if (operation.isOperator("+=", "-=")) {
+                expr.set(1, new Token(Token.TYPE_OPERATOR, "="));
+                expr.add(2, dest);
+                String newOperation = operation.asString().substring(0, 1);
+                expr.add(3, new Token(Token.TYPE_OPERATOR, newOperation));
             }
         }
-        boolean pairMatch = isPair(dest) && ("++".equals(operation) || "--".equals(operation) || "+=".equals(operation) || "-=".equals(operation));
-        if (ParserUtils.isRegister(dest) || pairMatch) {
-            switch (operation) {
-                case "=":
-                    syntaxTokens.remove(0);
-                    syntaxTokens.remove(0);
-                    moveToReg(src, dest, syntaxTokens, out);
-                    return true;
-                case "++":
-                case "--":
-                    if (syntaxTokens.size() != 2) {
-                        throw new CompileException();
-                    }
-                    incDecReg(src, dest, operation, out);
-                    return true;
-                case "+=":
-                case "-=":
-                    if (pairMatch && syntaxTokens.size() != 3) {
-                        if (syntaxTokens.size() < 3) {
-                            unsupportedOperationError();
-                        }
-                        syntaxTokens.remove(0);
-                        syntaxTokens.remove(0);
-                        addPair(src, dest, operation, syntaxTokens, out);
-                    } else if (syntaxTokens.size() == 3) {
-                        addReg(src, dest, operation, syntaxTokens.get(2), out);
-                    } else {
-                        throw new CompileException();
-                    }
-                    return true;
-                case "&=":
-                    if (pairMatch && syntaxTokens.size() != 3) {
-                        unsupportedOperationError();
-                    } else if (syntaxTokens.size() == 3) {
-                        //!!!!! syntaxTokens.size() == 19
-                        andReg(src, dest, syntaxTokens.get(2), out);
-                    } else {
-                        throw new CompileException();
-                    }
-                    return true;
-                case "|=":
-                    if (pairMatch && syntaxTokens.size() != 3) {
-                        unsupportedOperationError();
-                    } else if (syntaxTokens.size() == 3) {
-                        orReg(src, dest, syntaxTokens.get(2), out);
-                    } else {
-                        throw new CompileException();
-                    }
-                    return true;
 
-                case ".":
-                    return compileGroup(src, syntaxTokens, out);
+        int moveCount = expr.operatorsCount("=");
+        try {
+            if (moveCount > 1) {
+                return compileMultiMove(src, expr, out, moveCount);
             }
-        } else if (isVar(dest)) {
-            moveToVar(src, dest, syntaxTokens, out);
-            return true;
-        } else if (isPair(dest)) {
-            if ("=".equals(operation)) {
-                syntaxTokens.remove(0); // pair
-                syntaxTokens.remove(0); // =
-                moveToPair(src, dest, syntaxTokens, out);
+            return compileExpr(src, expr, out);
+        } catch (RuntimeException e) {
+            throw new CompileException("internal error: " + e.getMessage());
+        }
+    }
+
+
+    private boolean compileMultiMove(TokenString src, Expression expr, OutputFile out, int moveCount) throws CompileException {
+        // a = b = c -> b = c, a = b
+        if (expr.get(0).isOperator("=")) {
+            unexpectedExpressionError();
+        }
+        Expression lastExpression = new Expression();
+        for (int exrNumber = moveCount-1; exrNumber > 0; exrNumber--) {
+            lastExpression.clear();
+            int len = 0;
+            boolean moveFound = false;
+            for (int i = expr.size()-1; i >= 0; i--) {
+                Token t = expr.get(i);
+                if (t.isOperator("=")) {
+                    if (moveFound) {
+                        break;
+                    }
+                    moveFound = true;
+                }
+                if (!moveFound) {
+                    len++;
+                }
+                lastExpression.add(0, t);
+            }
+            if (!compileExpr(src, lastExpression, out)) {
+                return false;
+            }
+            expr.removeLast(len+1);
+        } // for exprNumber
+        return compileExpr(src, expr, out);
+    }
+
+    private boolean compileExpr(TokenString src, Expression expr, OutputFile out) throws CompileException {
+        Token dest = expr.get(0);
+        Token operation = expr.get(1);
+        if (!operation.isOperator()) {
+            return false;
+        }
+        switch (operation.asString()) {
+            case "=":
+                if (dest.isRegister()) {
+                    expr.removeFirst(2);
+                    moveToReg(src, dest, expr, out);
+                } else if (dest.isRegGroup() || dest.isPair()) {
+                    expr.removeFirst(2);
+                    moveToGroupOrPair(src, dest, expr, out);
+                } else if (dest.isVar()) {
+                    expr.removeFirst(2);
+                    moveToVar(src, dest, expr, out);
+                } else {
+                    unexpectedExpressionError();
+                }
                 return true;
-            }
+            case "++":
+            case "--":
+                if (expr.size() != 2) {
+                    unexpectedExpressionError();
+                }
+                incDecReg(src, dest, operation, out);
+                return true;
+            case "+=":
+            case "-=":
+                if (dest.isPair() || dest.isRegisterWord()) {
+                    if (expr.size() < 3) {
+                        unsupportedOperationError();
+                    }
+                    expr.removeFirst(2);
+                    addPair(src, dest, operation, expr.get(0), out);
+                } else if (dest.isRegGroup() && expr.size() == 3) {
+                    Token arg = expr.get(2);
+                    if (!arg.isRegGroup(dest.size())) {
+                        unexpectedExpressionError();
+                    }
+                    addRegGroup(src, dest, operation, arg, out);
+                } else if (dest.isRegister() && expr.size() == 3) {
+                    addReg(src, dest, operation, expr.get(2), out);
+                } else {
+                    unexpectedExpressionError();
+                }
+                return true;
+            case "&=":
+                if (expr.size() != 3) {
+                    unsupportedOperationError();
+                } else if (expr.size() == 3) {
+                    andReg(src, dest, expr.get(2), out);
+                } else {
+                    unexpectedExpressionError();
+                }
+                return true;
+            case "|=":
+                if (expr.size() != 3) {
+                    unsupportedOperationError();
+                } else if (expr.size() == 3) {
+                    orReg(src, dest, expr.get(2), out);
+                } else {
+                    unexpectedExpressionError();
+                }
+                return true;
+            case "<<=":
+                if (expr.size() == 3) {
+                    shlRegs(src, dest, expr.get(2), out);
+                } else {
+                    unexpectedExpressionError();
+                }
+                return true;
+            case ">>=":
+                if (expr.size() == 3) {
+                    shrRegs(src, dest, expr.get(2), out);
+                } else {
+                    unexpectedExpressionError();
+                }
+                return true;
+            default:
+                unsupportedOperationError(operation);
         }
         return false;
     }
 
 
-    private String mergeTokensInList(List<String> tokens) {
-        String result;
-        if (tokens.size() > 1 && isConstExpressionTokens(tokens)) {
-            StringBuilder builder = new StringBuilder();
-            for (String s : tokens) {
-                if (parser.isConstant(s)) {
-                    builder.append(parser.makeConstExpression(s));
-                } else {
-                    builder.append(s);
+    private void tryToMergeConstants(Expression expr) throws CompileException {
+        if (parser.gcc || expr.isEmpty() || !expr.get(0).isSomeString("BYTE1", "BYTE2", "BYTE3", "BYTE4", "HIGH", "LOW")) {
+            return;
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(expr.get(0).asString());
+        int bc = 0;
+        int i = 1;
+        while (i < expr.size()) {
+            Token t = expr.get(i);
+            if (t.isOperator("(")) {
+                bc++;
+            } else if (t.isOperator(")")) {
+                bc--;
+                if (bc == 0) {
+                    i++;
+                    sb.append(t.asString());
+                    break;
                 }
             }
-            result = builder.toString();
-            tokens.clear();
-            tokens.add(result);
-        } else {
-            result = tokens.get(0);
+            i++;
+            sb.append(t.asString());
         }
-        return result;
+        if (bc != 0) {
+            unsupportedOperationError();
+        }
+        expr.removeFirst(i);
+        Token t = new Token(Token.TYPE_CONST_EXPRESSION, sb.toString());
+        expr.add(0, t);
     }
 
-    private void moveToReg(TokenString src, String destReg, List<String> tokens, OutputFile out) throws CompileException {
-        if (tokens.isEmpty()) {
-            throw new CompileException("empty expression");
+
+    private void moveToReg(TokenString src, Token dest, Expression expr, OutputFile out) throws CompileException {
+        if (expr.isEmpty()) {
+            emptyExpressionError();
         }
-        String firstArg = mergeTokensInList(tokens);
-        if (ParserUtils.isRegister(firstArg)) {
-            if (!firstArg.equalsIgnoreCase(destReg)) {
-                out.appendCommand(src, "mov", destReg, firstArg);
+        if (expr.size() > 1) {
+            tryToMergeConstants(expr);
+        }
+        Token firstArg = expr.get(0);
+        if (firstArg.isRegister()) {
+            if (!firstArg.equals(dest)) {
+                out.appendCommand(src, "mov", dest, firstArg);
             }
         } else {
             // x = -3
             // x = -x
             // x = abc
             // x = var
-            int val;
-            if ("-".equals(firstArg) && tokens.size() > 1) {    // x = -y
-                String secondArg = tokens.get(1);
+            if (firstArg.isOperator("-") && expr.size() > 1) {    // x = -y
+                Token secondArg = expr.get(1);
                 // x = -y
-                if (ParserUtils.isRegister(secondArg)) {
-                    if (destReg.equalsIgnoreCase(secondArg)) {
-                        out.appendCommand(src, "neg", destReg);
+                if (secondArg.isRegister()) {
+                    if (dest.equals(secondArg)) {
+                        out.appendCommand(src, "neg", dest);
                     } else {
-                        out.appendCommand(src, "mov", destReg, secondArg);
-                        out.appendCommand(src, "neg", destReg);
+                        out.appendCommand(src, "mov", dest, secondArg);
+                        out.appendCommand(src, "neg", dest);
                     }
                 } else {
                     // x = -123
-                    if (!isConstExpression(secondArg) && !parser.isConstant(secondArg)) {
-                        throw new CompileException("unexpected expression: " + secondArg);
+                    if (!secondArg.isAnyConst()) {
+                        unexpectedExpressionError(secondArg);
                     }
-                    String s = parser.isConstant(secondArg) ? parser.makeConstExpression(secondArg) : secondArg;
-                    out.appendCommand(src, "ldi", destReg, "-"+wrapToBrackets(s));
+                    Token s = secondArg.isConst() ? resolveConst(secondArg) : secondArg;
+                    out.appendCommand(src, "ldi", dest, s.getNegativeExpr());
                 }
-                tokens.remove(0);
+                expr.removeFirst();
             } else {    // x = const | var | expression
-                try {
-                    val = ParserUtils.parseValue(firstArg);
-                } catch (NumberFormatException e) {
-                    val = -1;
-                }
-                if (val == 0) {
-                    out.appendCommand(src, "clr", destReg);
+                if (firstArg.isNumber() && firstArg.getNumberValue() == 0) {
+                    out.appendCommand(src, "clr", dest);
+                    return;
                 } else {
-                    if (isVar(firstArg)) {
+                    if (firstArg.isVar()) {
                         int size = getVarSize(firstArg);
                         if (size == 1) {
-                            out.appendCommand(src, "lds", destReg, firstArg);
+                            out.appendCommand(src, "lds", dest, firstArg);
                         } else {
                             unsupportedOperationError();
                         }
                     } else {
-                        if (parser.isConstant(firstArg)) {
-                            Constant c = parser.getConstant(firstArg);
-                            String right = parser.makeConstExpression(c);
-//                                    parser.gcc && c.type == Constant.Type.EQU ? c.value : firstArg;
- //                           right = parser.isConstant(right) ? parser.makeConstExpression(secondArg) : secondArg;
-
-                            out.appendCommand(src, "ldi", destReg, right);
-                        } else if (isConstExpression(firstArg)) {
-                            out.appendCommand(src, "ldi", destReg, firstArg);
+                        if (firstArg.isConst()) {
+                            out.appendCommand(src, "ldi", dest, resolveConst(firstArg));
+                        } else if (firstArg.isAnyConst()) {
+                            out.appendCommand(src, "ldi", dest, firstArg);
                         } else {
-                            throw new CompileException("unexpected expression: " + firstArg);
+                            unexpectedExpressionError(firstArg);
                         }
                     }
                 }
             }
         }
-        if (tokens.size() == 1) {
+        if (expr.size() == 1) {
             return;
         }
-        tokens.remove(0);
+        expr.removeFirst();
 
 
-        if (tokens.size() % 2 != 0) {
-            throw new CompileException();
+        if (expr.size() % 2 != 0) {
+            unexpectedExpressionError();
         }
 
-        // tyy to combine all tokens in line
-        String firstOperation = tokens.get(0);
-        mergeTokensInList(tokens);
-        if (tokens.size() == 1) {
-            String expr = tokens.get(0).substring(firstOperation.length());
-            tokens.clear();
-            tokens.add(firstOperation);
-            tokens.add(expr);
-        }
-
-        for (int i = 0; i < tokens.size()/2; i++) {
-            String operation = tokens.get(i*2);
-            String arg = tokens.get(i*2+1);
-            switch (operation) {
+        for (int i = 0; i < expr.size()/2; i++) {
+            Token operation = expr.get(i*2);
+            Token arg = expr.get(i*2+1);
+            switch (operation.asString()) {
                 case "+":
-                    if (isConstExpression(arg)) {
-                        Integer val = ParserUtils.isNumber(arg) ? ParserUtils.parseValue(arg) : null;
-                        if (val != null && val == 1) {
-                            out.appendCommand(src, "inc", destReg);
+                    if (arg.isAnyConst()) {
+                        if (arg.isNumber() && arg.getNumberValue() == 1) {
+                            out.appendCommand(src, "inc", dest);
                         } else {
-                            out.appendCommand(src, "subi", destReg, "-" + wrapToBrackets(arg));
+                            out.appendCommand(src, "subi", dest, arg.getNegativeExpr());
                         }
-                    } else if (parser.isConstant(arg)) {
-                        String s = parser.makeConstExpression(arg);
-                        out.appendCommand(src, "subi", destReg, "-" + wrapToBrackets(s));
-                    } else if (ParserUtils.isRegister(arg)) {
-                        out.appendCommand(src, "add", destReg, arg);
+                    } else if (arg.isRegister()) {
+                        out.appendCommand(src, "add", dest, arg);
                     } else {
-                        throw new CompileException("wrong argument: " + arg);
+                        wrongArgumentError(arg);
                     }
                     break;
                 case "-":
-                    if (isConstExpression(arg)) {
-                        Integer val = ParserUtils.isNumber(arg) ? ParserUtils.parseValue(arg) : null;
-                        if (val != null && val == 1) {
-                            out.appendCommand(src, "dec", destReg);
+                    if (arg.isAnyConst()) {
+                        if (arg.isNumber() && arg.getNumberValue() == 1) {
+                            out.appendCommand(src, "dec", dest);
                         } else {
-                            out.appendCommand(src, "subi", destReg, wrapToBrackets(arg));
+                            out.appendCommand(src, "subi", dest, arg.wrapToBrackets());
                         }
-                    } else if (ParserUtils.isRegister(arg)) {
-                        out.appendCommand(src, "sub", destReg, arg);
+                    } else if (arg.isRegister()) {
+                        out.appendCommand(src, "sub", dest, arg);
                     } else {
-                        throw new CompileException("wrong argument: " + arg);
+                        wrongArgumentError(arg);
                     }
                     break;
                 case "&":
-                    if (isConstExpression(arg)) {
-                        if (!ParserUtils.isNumber(arg)) {
-                            arg = wrapToBrackets(arg);
-                        }
-                        out.appendCommand(src, "andi", destReg, arg);
-                    } else if (ParserUtils.isRegister(arg)) {
-                        out.appendCommand(src, "and", destReg, arg);
+                    if (arg.isAnyConst()) {
+                        out.appendCommand(src, "andi", dest, arg.wrapToBrackets());
+                    } else if (arg.isRegister()) {
+                        out.appendCommand(src, "and", dest, arg);
                     } else {
-                        throw new CompileException("wrong argument: " + arg);
+                        wrongArgumentError(arg);
                     }
                     break;
                 case "|":
-                    if (isConstExpression(arg)) {
-                        if (!ParserUtils.isNumber(arg)) {
-                            arg = wrapToBrackets(arg);
-                        }
-                        out.appendCommand(src, "ori", destReg, arg);
-                    } else if (ParserUtils.isRegister(arg)) {
-                        out.appendCommand(src, "or", destReg, arg);
+                    if (arg.isAnyConst()) {
+                        out.appendCommand(src, "ori", dest, arg.wrapToBrackets());
+                    } else if (arg.isRegister()) {
+                        out.appendCommand(src, "or", dest, arg);
                     } else {
-                        throw new CompileException("wrong argument: " + arg);
+                        wrongArgumentError(arg);
                     }
                     break;
                 default:
@@ -288,244 +324,168 @@ class ExpressionsCompiler {
         }
     }
 
+    private Token resolveConst(Token name) {
+        String s = parser.makeConstExpression(name.asString());
+        if (ParserUtils.isNumber(s)) {
+            return new Token(Token.TYPE_NUMBER, s);
+        }
+        return new Token(Token.TYPE_CONST, s);
+    }
 
-    private void moveToVar(TokenString src, String varName, List<String> syntaxTokens, OutputFile out) throws CompileException {
-        if (syntaxTokens.size() < 3 || !"=".equals(syntaxTokens.get(1))) {
+
+    private void moveToVar(TokenString src, Token dest, Expression expr, OutputFile out) throws CompileException {
+        if (expr.size() != 1) {
             unsupportedOperationError();
         }
-        int varSize = getVarSize(varName);
+        Token arg = expr.get(0);
+        int varSize = getVarSize(dest);
+        if (arg.size() != varSize) {
+            sizesMismatchError();
+        }
         if (varSize == 1) {
-            if (syntaxTokens.size() != 3) {
-                unsupportedOperationError();
+            if (!arg.isRegister()) {
+                unexpectedExpressionError("register expected: " + arg);
             }
-            String reg = syntaxTokens.get(2);
-            if (!ParserUtils.isRegister(reg)) {
-                throw new CompileException("register expected: " + reg);
-            }
-            out.appendCommand(src, "sts", varName, reg);
+            out.appendCommand(src, "sts", dest, arg);
         } else {
-            if (syntaxTokens.size() != 2 + varSize + varSize-1) {
-                unsupportedOperationError("sizes mismatch");
-            }
             for (int i = 0; i < varSize; i++) {
-                String reg = syntaxTokens.get(2 + i*2);
-                if (!ParserUtils.isRegister(reg)) {
-                    throw new CompileException("register expected: " + reg);
-                }
-                String varAddr = i < varSize-1 ? varName + "+" + (varSize-i-1) : varName;
-                out.appendCommand(src, "sts", varAddr, reg);
+                String varAddress = i < varSize-1 ? dest + "+" + (varSize-i-1) : dest.asString();
+                out.appendCommand(src, "sts", varAddress, arg.getReg(i).asString());
             }
         }
     }
 
-    private void moveToPair(TokenString src, String pair, List<String> args, OutputFile out) throws CompileException {
-        if (args.size() == 1) {
-            String arg = args.get(0);
-            if (isConstExpression(arg)) {
-                out.appendCommand(src, "ldi", pair + "L", loByte(arg));
-                out.appendCommand(src, "ldi", pair + "H", hiByte(arg));
-            } else if (getVarType(arg) == Type.POINTER) {
-                String low = loVarPtr(arg, Type.POINTER, false);
-                String high = hiVarPtr(arg, Type.POINTER, false);
-                out.appendCommand(src, "ldi", pair + "L", low);
-                out.appendCommand(src, "ldi", pair + "H", high);
-            } else if (getVarType(arg) == Type.PRGPTR) {
-                String low = loVarPtr(arg, Type.PRGPTR, false);
-                String high = hiVarPtr(arg, Type.PRGPTR, false);
-                out.appendCommand(src, "ldi", pair + "L", low);
-                out.appendCommand(src, "ldi", pair + "H", high);
-            } else {
-                unsupportedOperationError();
-            }
-            return;
-        }
-
-        if (isRegisterWord(args)) {
-            out.appendCommand(src, "movw", pair + "L", args.get(2));
-        } else if (args.size() == 3 && checkRegisterGroup(args)) {
-            out.appendCommand(src, "mov", pair + "L", args.get(2));
-            out.appendCommand(src, "mov", pair + "H", args.get(0));
-        } else {
-            List<String> constants = new ArrayList<>();
-            StringBuilder argsStr = new StringBuilder();
-            for (String arg : args) {
-                if (getVarType(arg) == Type.POINTER) {
-                    constants.add(arg);
-                }
-                argsStr.append(arg);
-            }
-            if (!parser.gcc && constants.size() == 1 && isConstExpressionTokens(args, constants)) {
-                String arg = argsStr.toString();
-                String low = loVarPtr(arg, Type.POINTER, false);
-                String high = hiVarPtr(arg, Type.POINTER, false);
-                out.appendCommand(src, "ldi", pair + "L", low);
-                out.appendCommand(src, "ldi", pair + "H", high);
-            } else {
-                unsupportedOperationError();
-            }
-        }
-    }
-
-
-
-    private boolean compileGroup(TokenString src, List<String> syntaxTokens, OutputFile out) throws CompileException {
-        if (syntaxTokens.size() < 3) {
-            return false;
-        }
-        String operator = null;
-        StringBuilder rightBuilder = new StringBuilder();
-        int operatorIndex = 1;
-        for (String s : syntaxTokens) {
-            if (operator == null && (".".equals(s) || isRegister(s))) {
-                operatorIndex++;
-                continue;
-            }
-            if (operator == null) {
-                operator = s;
-            } else {
-                rightBuilder.append(s);
-            }
-        }
-        if (operatorIndex < 0) {
-            unsupportedOperationError();
-        }
-        List<String> rightTokens = new ArrayList<>();
-        while (syntaxTokens.size() >= operatorIndex) {
-            String s = syntaxTokens.remove(syntaxTokens.size()-1);
-            rightTokens.add(0, s);
-        }
-        if (!rightTokens.isEmpty()) {
-            rightTokens.remove(0);
-        }
-        String right = rightBuilder.toString();
-        if (!checkRegisterGroup(syntaxTokens)) {
-            throw new CompileException("wrong left side expression");
-        }
-
-        if (isVar(right)) {
-            if ("+=".equals(operator) || "-=".equals(operator)) {
-                boolean isAdd = "+=".equals(operator);
-                String rh = syntaxTokens.get(0);
-                String rl = syntaxTokens.get(2);
-                if (getVarType(right) == Type.POINTER) {
-                    String low = loVarPtr(right, Type.POINTER, isAdd);
-                    String high = hiVarPtr(right, Type.POINTER, isAdd);
-                    out.appendCommand(src, "subi", rl, low);
-                    out.appendCommand(src, "sbci", rh, high);
-                } else if (getVarType(right) == Type.PRGPTR) {
-                    String low = loVarPtr(right, Type.PRGPTR, isAdd);
-                    String high = hiVarPtr(right, Type.PRGPTR, isAdd);
-                    out.appendCommand(src, "subi", rl, low);
-                    out.appendCommand(src, "sbci", rh, high);
-                } else {
+    private void moveToGroupOrPair(TokenString src, Token dest, Expression expr, OutputFile out) throws CompileException {
+        Token arg = expr.get(0);
+        if (expr.size() > 1) {
+            if (!parser.gcc) {
+                boolean canBeExpression = expr.operatorsCount("=", "!=", "+=", "-=", "&=", "|=", ">=", "<=", "<<=", ">>=") == 0;
+                if (!canBeExpression) {
                     unsupportedOperationError();
                 }
-            } else if ("=".equals(operator)) {
-                int varSize = getVarSize(right);
-                if (syntaxTokens.size() != varSize * 2 - 1) {
-                    unsupportedOperationError("sizes mismatch");
+                Variable.Type varType = null;
+                for (Token t : expr) {
+                    if (t.isVar()) {
+                        Variable.Type vt = getVarType(t);
+                        if (vt != null && varType != null && vt != varType) {
+                            unsupportedOperationError();
+                        }
+                        if (varType == null && vt != null) {
+                            varType = vt;
+                        }
+                    }
                 }
-                for (int i = 0; i < varSize; i++) {
-                    String varAddr = i < varSize - 1 ? right + "+" + (varSize - i - 1) : right;
-                    String reg = syntaxTokens.get(i * 2);
-                    out.appendCommand(src, "lds", reg, varAddr);
-                }
-            } else {
-                unsupportedOperationError(operator);
-            }
-        } else if (checkRegisterGroup(syntaxTokens) && isPair(right)) {
-            if ("=".equals(operator)) {
-                if (isRegisterWord(syntaxTokens)) {
-                    // r1.r0 = Y -> movw	r0, YL
-                    out.appendCommand(src, "movw", syntaxTokens.get(2), right + "L");
+                Token merged = new Token(Token.TYPE_CONST_EXPRESSION, expr.toString());
+                if (varType != null) {
+                    String low = loVarPtr(merged, varType, false);
+                    String high = hiVarPtr(merged, varType, false);
+                    out.appendCommand(src, "ldi", dest.getPairLow(), low);
+                    out.appendCommand(src, "ldi", dest.getPairHigh(), high);
                 } else {
-                    out.appendCommand(src, "mov", syntaxTokens.get(2), right + "L");
-                    out.appendCommand(src, "mov", syntaxTokens.get(0), right + "H");
-                }
-            } else if ("-=".equals(operator)) {
-                out.appendCommand(src, "sub", syntaxTokens.get(2), right + "L");
-                out.appendCommand(src, "sbc", syntaxTokens.get(0), right + "H");
-            } else if ("+=".equals(operator)) {
-                out.appendCommand(src, "add", syntaxTokens.get(2), right + "L");
-                out.appendCommand(src, "adc", syntaxTokens.get(0), right + "H");
-            } else {
-                unsupportedOperationError();
-            }
-        } else if (checkRegisterGroup(syntaxTokens) && checkRegisterGroup(rightTokens)) {
-            int len1 = syntaxTokens.size()/2+1;
-            int len2 = rightTokens.size()/2+1;
-            if (len1 != len2) {
-                throw new CompileException("arguments sizes mismatch");
-            }
-            if ("-=".equals(operator)) {
-                for (int i = syntaxTokens.size() - 1; i >= 0; i -= 2) {
-                    String instruction = i == syntaxTokens.size() - 1 ? "sub" : "sbc";
-                    out.appendCommand(src, instruction, syntaxTokens.get(i), rightTokens.get(i));
-                }
-            } else if ("+=".equals(operator)) {
-                for (int i = syntaxTokens.size()-1; i >= 0; i -= 2) {
-                    String instruction = i == syntaxTokens.size()-1 ? "add" : "adc";
-                    out.appendCommand(src, instruction, syntaxTokens.get(i), rightTokens.get(i));
-                }
-            } else if ("=".equals(operator)) {
-                // TODO !!!! optimize with movw !!!!
-                for (int i = syntaxTokens.size()-1; i >= 0; i -= 2) {
-                    out.appendCommand(src, "mov", syntaxTokens.get(i), rightTokens.get(i));
+                    out.appendCommand(src, "ldi", dest.getPairLow(), loByte(merged));
+                    out.appendCommand(src, "ldi", dest.getPairHigh(), hiByte(merged));
                 }
             } else {
                 unsupportedOperationError();
             }
+        } else if (arg.isAnyConst()) {
+            if (dest.isRegGroup()) {
+                for (int i = dest.size()-1; i >= 0; i--) {
+                    out.appendCommand(src, "ldi", dest.getReg(i), numByte(arg, dest.size()-1-i));
+                }
+            } else {
+                out.appendCommand(src, "ldi", dest.getPairLow(), loByte(arg));
+                out.appendCommand(src, "ldi", dest.getPairHigh(), hiByte(arg));
+            }
+        } else if ((arg.isPair() || arg.isRegisterWord()) && (dest.isPair() || dest.isRegisterWord())) {
+            out.appendCommand(src, "movw", dest.getPairLow(), arg.getPairLow());
+        } else if (arg.isPair() || (arg.isRegGroup() && arg.size() == 2)) {
+            // TODO !!!! optimize with movw !!!!
+            out.appendCommand(src, "mov", dest.getPairLow(), arg.getPairLow());
+            out.appendCommand(src, "mov", dest.getPairHigh(), arg.getPairHigh());
+        } else if (dest.isRegGroup() && arg.isRegGroup()) {
+            if (dest.size() != arg.size()) {
+                sizesMismatchError();
+            }
+            // TODO !!!! optimize with movw !!!!
+            for (int i = dest.size()-1; i >= 0; i--) {
+                out.appendCommand(src, "mov", dest.getReg(i), arg.getReg(i));
+            }
+        } else if (getVarType(arg) == Type.POINTER) {
+            String low = loVarPtr(arg, Type.POINTER, false);
+            String high = hiVarPtr(arg, Type.POINTER, false);
+            out.appendCommand(src, "ldi", dest.getPairLow(), low);
+            out.appendCommand(src, "ldi", dest.getPairHigh(), high);
+        } else if (getVarType(arg) == Type.PRGPTR) {
+            String low = loVarPtr(arg, Type.PRGPTR, false);
+            String high = hiVarPtr(arg, Type.PRGPTR, false);
+            out.appendCommand(src, "ldi", dest.getPairLow(), low);
+            out.appendCommand(src, "ldi", dest.getPairHigh(), high);
+        } else if ((dest.isRegGroup() || dest.isPair()) && isVar(arg)) {
+            if (getVarSize(arg) != dest.size()) {
+                sizesMismatchError();
+            }
+            int sz = dest.size();
+            for (int i = 0; i < sz; i++) {
+                String varAddress = i < sz - 1 ? arg + "+" + (sz - i - 1) : arg.asString();
+                out.appendCommand(src, "lds", dest.getReg(i), varAddress);
+            }
+        } else if (arg.isPair() || arg.isRegisterWord()) {
+            out.appendCommand(src, "movw", dest.getPairLow(), arg.getPairLow());
+        } else if (arg.isRegGroup() && arg.size() == 2) {
+            // TODO !!!! optimize with movw !!!!
+            out.appendCommand(src, "mov", dest.getPairLow(), arg.getPairLow());
+            out.appendCommand(src, "mov", dest.getPairHigh(), arg.getPairHigh());
         } else {
-            if (!isConstExpression(right) && !parser.isConstant(right)) {
-                throw new CompileException("unexpected expression: " + right);
-            }
-            if ("=".equals(operator)) {
-                groupAssignConst(src, syntaxTokens, right, out);
-            } else if ("+=".equals(operator) || "-=".equals(operator)) {
-                groupAddSub(src, syntaxTokens, operator, right, out);
-            } else {
-                unsupportedOperationError();
-            }
-        }
-        return true;
-    }
-
-
-    private void groupAssignConst(TokenString srcLine, List<String> src, String right, OutputFile out) {
-        int groupSize = src.size() / 2 + 1;
-        boolean isNumber = ParserUtils.isNumber(right);
-        int val = isNumber ? ParserUtils.parseValue(right) : -1;
-        for (int i = 0; i < groupSize; i++) {
-            String reg = src.get(i * 2);
-            String v;
-            if (isNumber) {
-                int part = (val >> (8 * (groupSize - i - 1))) & 0xff;
-                v = "0x" + Integer.toHexString(part);
-            } else {
-                v = "(" + right + " >> " + 8 * (groupSize - i - 1) + ") & 0xff";
-            }
-            // TODO support not-GCC mode
-            out.appendCommand(srcLine, "ldi", reg, v);
+            unsupportedOperationError(expr);
         }
     }
 
-    private String hiByte(String val) {
+
+    private static String hexByteStr(int val) {
+        String s = Integer.toHexString(val);
+        return s.length() == 1 ? "0x0" + s : "0x" + s;
+    }
+
+
+    private String hiByte(Token val) {
+        if (val.isNumber()) {
+            int d = val.getNumberValue();
+            return hexByteStr(d >> 8);
+        }
         if (parser.gcc) {
-            return wrapToBrackets(val + " >> 8");
+            return "(" +val + " >> 8)";
         } else {
             return "HIGH(" + val + ")";
         }
     }
 
-    private String loByte(String val) {
+    private String loByte(Token val) {
+        if (val.isNumber()) {
+            int d = val.getNumberValue();
+            return hexByteStr(d & 0xff);
+        }
         if (parser.gcc) {
-            return wrapToBrackets(val + " & 0xFF");
+            return "(" + val + " & 0xFF)";
         } else {
             return "LOW(" + val + ")";
         }
     }
 
-    private String loVarPtr(String name, Variable.Type type, boolean negative) {
+    private String numByte(Token val, int byteNum) {
+        if (val.isNumber()) {
+            int d = val.getNumberValue();
+            d = d >> (8*byteNum);
+            return hexByteStr(d & 0xff);
+        }
+        if (parser.gcc) {
+            return "((" + val + ">>" + (byteNum*8) + ") & 0xFF)";
+        } else {
+            return ("BYTE" + (byteNum+1)) + "(" + val + ")";
+        }
+    }
+
+    private String loVarPtr(Token name, Variable.Type type, boolean negative) {
         if (parser.gcc) {
             return negative ? "lo8(-(" + name + "))" : "lo8(" + name + ")";
         } else {
@@ -539,7 +499,7 @@ class ExpressionsCompiler {
         }
     }
 
-    private String hiVarPtr(String name, Variable.Type type, boolean negative) {
+    private String hiVarPtr(Token name, Variable.Type type, boolean negative) {
         if (parser.gcc) {
             return negative ? "hi8(-(" + name + "))" : "hi8(" + name + ")";
         } else {
@@ -554,154 +514,167 @@ class ExpressionsCompiler {
     }
 
 
-    private void groupAddSub(TokenString srcLine, List<String> src, String operator, String right, OutputFile out) throws CompileException {
-        if (isRegisterWord(src)) {
-            String instruction = "+=".equals(operator) ? "adiw" : "sbiw";
-            out.appendCommand(srcLine, instruction, src.get(2), right);
+
+    private void incDecReg(TokenString src, Token dest, Token operation, OutputFile out) {
+        if (dest.isPair()) {
+            String instruction = operation.isOperator("++") ? "adiw" : "sbiw";
+            out.appendCommand(src, instruction, dest + "L", "1");
         } else {
-            unsupportedOperationError();
+            String instruction = operation.isOperator("++") ? "inc" : "dec";
+            out.appendCommand(src, instruction, dest);
         }
     }
 
-
-    private static boolean isRegisterWord(List<String> arg) {
-        if (arg.size() != 3) {
-            return false;
-        }
-        String rh = arg.get(0).toLowerCase();
-        String rl = arg.get(2).toLowerCase();
-        if (isRegister(rh) && isRegister(rl) && rh.startsWith("r") && rl.startsWith("r")) {
-            try {
-                int nh = Integer.parseInt(rh.substring(1));
-                int nl = Integer.parseInt(rl.substring(1));
-                if (nl % 2 == 0 && nh == nl + 1) {
-                    return true;
-                }
-            } catch (Exception ignore) {}
-        }
-        return false;
-    }
-
-
-
-    private void incDecReg(TokenString src, String destReg, String operation, OutputFile out) throws CompileException {
-        if (isPair(destReg)) {
-            String instruction = "++".equals(operation) ? "adiw" : "sbiw";
-            out.appendCommand(src, instruction, destReg + "L", "1");
+    private void addRegGroup(TokenString src, Token dest, Token operation, Token arg, OutputFile out) throws CompileException {
+        if (operation.isOperator("+=")) {
+            for (int i = dest.size()-1; i >= 0; i --) {
+                String instruction = i == dest.size()-1 ? "add" : "adc";
+                out.appendCommand(src, instruction, dest.getReg(i), arg.getReg(i));
+            }
+        } else if (operation.isOperator("-=")) {
+            for (int i = dest.size()-1; i >= 0; i --) {
+                String instruction = i == dest.size()-1 ? "sub" : "sbc";
+                out.appendCommand(src, instruction, dest.getReg(i), arg.getReg(i));
+            }
         } else {
-            String instruction = "++".equals(operation) ? "inc" : "dec";
-            out.appendCommand(src, instruction, destReg);
+            unsupportedOperationError(operation);
         }
     }
 
-    private void addReg(TokenString src, String destReg, String operation, String argument, OutputFile out) throws CompileException {
-        boolean isAdd = "+=".equals(operation);
-        if (ParserUtils.isRegister(argument)) {
+    private void addReg(TokenString src, Token dest, Token operation, Token argument, OutputFile out) throws CompileException {
+        boolean isAdd = operation.isOperator("+=");
+        if (argument.isRegister()) {
             String instruction = isAdd ? "add" : "sub";
-            out.appendCommand(src, instruction, destReg, argument);
-        } else if (isPair(destReg)) {
+            out.appendCommand(src, instruction, dest, argument);
+        } else if (dest.isPair()) {
             String instruction = isAdd ? "adiw" : "sbiw";
-            if (isConstExpression(argument) || parser.isConstant(argument)) {
-                argument = wrapToBrackets(argument);
-                out.appendCommand(src, instruction, destReg + "L", argument);
+            if (argument.isAnyConst()) {
+                out.appendCommand(src, instruction, dest.getPairLow(), argument.wrapToBrackets());
             } else if (getVarType(argument) == Type.POINTER) {
                 String argLo = loVarPtr(argument, Type.POINTER, isAdd);
                 String argHi = hiVarPtr(argument, Type.POINTER, isAdd);
-                out.appendCommand(src, "subi", destReg + "L", argLo);
-                out.appendCommand(src, "sbci", destReg + "H", argHi);
+                out.appendCommand(src, "subi", dest.getPairLow(), argLo);
+                out.appendCommand(src, "sbci", dest.getPairHigh(), argHi);
             } else if (getVarType(argument) == Type.PRGPTR) {
                 String argLo = loVarPtr(argument, Type.PRGPTR, isAdd);
                 String argHi = hiVarPtr(argument, Type.PRGPTR, isAdd);
-                out.appendCommand(src, "subi", destReg + "L", argLo);
-                out.appendCommand(src, "sbci", destReg + "H", argHi);
-            } else if (isPair(argument)) {
+                out.appendCommand(src, "subi", dest.getPairLow(), argLo);
+                out.appendCommand(src, "sbci", dest.getPairHigh(), argHi);
+            } else if (argument.isPair()) {
                 if (isAdd) {
-                    out.appendCommand(src, "add", destReg + "L", argument + "L");
-                    out.appendCommand(src, "adc", destReg + "H", argument + "H");
+                    out.appendCommand(src, "add", dest.getPairLow(), argument.getPairLow());
+                    out.appendCommand(src, "adc", dest.getPairHigh(), argument.getPairHigh());
                 } else {
-                    out.appendCommand(src, "sub", destReg + "L", argument + "L");
-                    out.appendCommand(src, "sbc", destReg + "H", argument + "H");
+                    out.appendCommand(src, "sub", dest.getPairLow(), argument.getPairLow());
+                    out.appendCommand(src, "sbc", dest.getPairHigh(), argument.getPairHigh());
                 }
             } else {
-                throw new CompileException("unexpected expression: " + argument);
+                unexpectedExpressionError(argument);
             }
-        } else if (isConstExpression(argument)) {
-            argument = wrapToBrackets(argument);
+        } else if (argument.isAnyConst()) {
             if (isAdd) {
-                argument = "-" + argument;
-            }
-            out.appendCommand(src, "subi", destReg, argument);
-        } else {
-            throw new CompileException(" addReg " + destReg + ", " + argument);
-        }
-    }
-
-    private void addPair(TokenString src, String dest, String operation, List<String> args, OutputFile out) throws CompileException {
-        if (isPair(dest) && checkRegisterGroup(args)) {
-            if ("+=".equals(operation)) {
-                out.appendCommand(src, "add", dest + "L", args.get(2));
-                out.appendCommand(src, "adc", dest + "H", args.get(0));
+                out.appendCommand(src, "subi", dest, argument.getNegativeExpr());
             } else {
-                out.appendCommand(src, "sub", dest + "L", args.get(2));
-                out.appendCommand(src, "sbc", dest + "H", args.get(0));
+                out.appendCommand(src, "subi", dest, argument.wrapToBrackets());
             }
         } else {
-            unsupportedOperationError();
+            unexpectedExpressionError(argument);
         }
     }
 
-    private void andReg(TokenString src, String destReg, String argument, OutputFile out) throws CompileException {
-        if (isRegister(argument)) {
-            out.appendCommand(src, "and", destReg, argument);
-        } else if (isConstExpression(argument)) {
-            out.appendCommand(src, "andi", destReg, argument);
+    private void addPair(TokenString src, Token dest, Token operation, Token arg, OutputFile out) throws CompileException {
+        boolean add;
+        if (operation.isOperator("+=")) {
+            add = true;
+        } else if (operation.isOperator("-=")) {
+            add = false;
+        } else {
+            unsupportedOperationError(operation);
+            return;
+        }
+        if (arg.isAnyConst()) {
+            out.appendCommand(src, add ? "adiw" : "sbiw", dest.getPairLow(), arg.wrapToBrackets());
+        } else if (arg.isPair() || arg.isRegGroup()) {
+            out.appendCommand(src, add ? "add" : "sub", dest.getPairLow(), arg.getPairLow());
+            out.appendCommand(src, add ? "adc" : "sbc", dest.getPairHigh(), arg.getPairHigh());
+        } else if (arg.isVar()) {
+            Variable.Type varType = getVarType(arg);
+            if (varType != Type.POINTER && varType != Type.PRGPTR) {
+                unsupportedOperationError();
+            }
+            String argLo = loVarPtr(arg, varType, add);
+            String argHi = hiVarPtr(arg, varType, add);
+            out.appendCommand(src, "subi", dest.getPairLow(), argLo);
+            out.appendCommand(src, "sbci", dest.getPairHigh(), argHi);
         } else {
             unsupportedOperationError();
         }
     }
 
-    private void orReg(TokenString src, String destReg, String argument, OutputFile out) throws CompileException {
-        if (isRegister(argument)) {
-            out.appendCommand(src, "or", destReg, argument);
-        } else if (isConstExpression(argument)) {
-            out.appendCommand(src, "ori", destReg, argument);
+    private void andReg(TokenString src, Token dest, Token arg, OutputFile out) throws CompileException {
+        if (arg.isRegister()) {
+            out.appendCommand(src, "and", dest, arg);
+        } else if (arg.isAnyConst()) {
+            out.appendCommand(src, "andi", dest, arg);
         } else {
             unsupportedOperationError();
         }
     }
 
-    private Variable getVar(String name) {
-        return parser != null ? parser.getVariable(name) : null;
+    private void orReg(TokenString src, Token dest, Token arg, OutputFile out) throws CompileException {
+        if (arg.isRegister()) {
+            out.appendCommand(src, "or", dest, arg);
+        } else if (arg.isAnyConst()) {
+            out.appendCommand(src, "ori", dest, arg);
+        } else {
+            unsupportedOperationError();
+        }
     }
 
-    private boolean isVar(String name) {
+    private void shlRegs(TokenString src, Token dest, Token arg, OutputFile out) throws CompileException {
+        if (!arg.isNumber()) {
+            unsupportedOperationError();
+        }
+        int cnt = arg.getNumberValue();
+        for (int i = 0; i < cnt; i++) {
+            for (int ri = dest.size() - 1; ri >= 0; ri--) {
+                String instruction = ri == dest.size() - 1 ? "lsl" : "rol";
+                out.appendCommand(src, instruction, dest.getReg(ri));
+            }
+        }
+    }
+
+    private void shrRegs(TokenString src, Token dest, Token arg, OutputFile out) throws CompileException {
+        if (!arg.isNumber()) {
+            unsupportedOperationError();
+        }
+        int cnt = arg.getNumberValue();
+        for (int i = 0; i < cnt; i++) {
+            for (int ri = dest.size() - 1; ri >= 0; ri--) {
+                String instruction = ri == dest.size() - 1 ? "lsr" : "ror";
+                out.appendCommand(src, instruction, dest.getReg(ri));
+            }
+        }
+    }
+
+    private Variable getVar(Token name) {
+        return parser != null ? parser.getVariable(name.asString()) : null;
+    }
+
+    private boolean isVar(Token name) {
         return getVar(name) != null;
     }
 
-    private int getVarSize(String name) {
+    private int getVarSize(Token name) {
         Variable var = getVar(name);
         return var != null ? var.getSize() : -1;
     }
 
-    private Variable.Type getVarType(String name) {
+    private Variable.Type getVarType(Token name) {
         Variable var = getVar(name);
         return var != null ? var.type : null;
     }
 
-    private boolean checkRegisterGroup(List<String> tokens) {
-        if (tokens == null || tokens.isEmpty() || tokens.size() % 2 == 0) {
-            return false;
-        }
-        for (int i = 0; i < tokens.size()/2+1; i++) {
-            if (!ParserUtils.isRegister(tokens.get((2*i)))) {
-                return false;
-            }
-            if (2*i + 1 < tokens.size() && !".".equals(tokens.get(2*i+1))) {
-                return false;
-            }
-        }
-        return true;
-    }
 
     private boolean isConstExpression(String s) {
         return parser.isConstExpression(s);
@@ -719,8 +692,33 @@ class ExpressionsCompiler {
         throw new CompileException("unsupported operation");
     }
 
-    private static void unsupportedOperationError(String s) throws CompileException {
-        throw new CompileException("unsupported operation: " + s);
+    private static void unsupportedOperationError(Object o) throws CompileException {
+        throw new CompileException("unsupported operation: " + o);
     }
+
+    private static void constExpectedError(String val) throws CompileException {
+        throw new CompileException("constant expected: " + val);
+    }
+
+    private static void unexpectedExpressionError() throws CompileException {
+        throw new CompileException("unexpected expression");
+    }
+
+    private static void unexpectedExpressionError(Object o) throws CompileException {
+        throw new CompileException("unexpected expression: " + o);
+    }
+
+    private static void wrongArgumentError(Token t) throws CompileException {
+        throw new CompileException("wrong argument: " + t);
+    }
+
+    private static void emptyExpressionError() throws CompileException {
+        throw new CompileException("empty expression");
+    }
+
+    private static void sizesMismatchError() throws CompileException {
+        unsupportedOperationError("sizes mismatch");
+    }
+
 
 }

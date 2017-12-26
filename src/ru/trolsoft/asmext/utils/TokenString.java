@@ -206,7 +206,7 @@ public class TokenString implements Comparable<TokenString>, CharSequence, Itera
 
             if ("=".equals(next)) {
                 if ("=".equals(prev) || "!".equals(prev) || ">".equals(prev) || "<".equals(prev) || "+".equals(prev)
-                        || "-".equals(prev) || "&".equals(prev) || "|".equals(prev)) {
+                        || "-".equals(prev) || "&".equals(prev) || "|".equals(prev) || "<<".equals(prev) || ">>".equals(prev)) {
                     result.set(result.size()-1, prev + next);
                     continue;
                 }

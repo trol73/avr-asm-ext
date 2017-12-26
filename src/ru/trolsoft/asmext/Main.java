@@ -36,14 +36,17 @@ public class Main {
 }
 /*
 
-	rmp = ' '
-	R0 = rmp
-	r0 = rmp = ' '
+	if (rmp == cCR) goto @NoPar
+	if (rmp == cLF) goto @NoPar
+        if (rmp == cCR || rmp == cLF) goto @NoPar
 
-	rmp = 4 ; 1 seconds
-	sUartMonFCnt = rmp
-	sUartMonFCnt = rmp = 4
+    sbi	_SFR_IO_ADDR(UCSRB), UDRIE			; enable UDRE interrupt
+        $port[UCSRB].UDRIE = 1
 
+
+.args v(ZH.ZL)
+.args v(Z)
+.use rRes3.rRes2.rRes1 as res
 
 	rmp = BYTE1(100000000) ; check overflow
 	cp rRes1, rmp
@@ -54,6 +57,74 @@ public class Main {
 	rmp = BYTE4(100000000)
 	cpc rRes4, rmp
 	brcs @1
+
+	ZH.ZL.rmp = 100000	; 100 k
+	rcall DisplDecX3
+	Z = 10000			; 10 k
+	rcall DisplDecX2
+	Z = 1000			; 1 k
+	rcall DisplDecX2
+
+
+st X+, rmp
+        $mem[X++] = rmp
+in	rmp, PINC
+        rmp = $io[PINC]
+out	OCR2, rmp
+        $io[OCR2] = rmp
+ld rRes4, Z+
+        rRes4 = $mem[Z++]
+
+	ld rRes1, Z+ ; copy counter value
+	ld rRes2, Z+
+	ld rRes3, Z+
+	ld rRes4, Z+
+	    (rRes1, rRes2, rRes3, rRes4) = $mem[Z++
+	    (rRes1, rRes2, rRes3, rRes4) <- $mem[Z++]
+
+	rmp = ' '
+	st X+,rmp
+	rmp = 'H'
+	st X+,rmp
+	rmp = 'z'
+	st X+,rmp
+	rmp = ' '
+	st X,rmp
+	        $ram[X++] = rmp(' ', 'H', 'z')
+	        $ram[X] = rmp = ' '
+
+		lpm
+		Z ++
+
+		st X+, R0
+		    $mem[X++] = r0 = $prg[Z++]
+
+
+
+
+
+
+	st Z+, rRes1 ; copy counter value
+	st Z+, rRes2
+	st Z+, rRes3
+	st Z+, rRes4
+	        $mem[Z++] <- rRes1, rRes2, rRes3, rRes4
+	        $mem[Z++] = (rRes1, rRes2, rRes3, rRes4)
+
+	rmp = ' '
+	st	X+, rmp
+	        $mem[X++] = rmp = ' '
+	        rmp = ' ' -> $mem[X++]
+
+	rmp = '0' + R2
+	st	X+, rmp
+	    $mem[X++] = '0' + R2
+
+
+
+
+	if (rDiv1 == 0) goto CycleM0a ; no error
+	rjmp CycleOvf
 
 
 
@@ -71,9 +142,6 @@ if (r2.r1 < ZH.ZL) goto @2 ; ended subtraction
 		out UDR,R0
 	.endloop
 
-	X = s_video_mem + 16
-	;ldi	XH, HIGH(s_video_mem+16)
-	;ldi	XL, LOW(s_video_mem+16)
 
 	if (ZL == 1) goto Interval_enc_clockwise
 	if (ZL == 7) goto Interval_enc_clockwise

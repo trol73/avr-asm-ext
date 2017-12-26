@@ -24,6 +24,7 @@ public class Parser {
     Stack<Block> blocks = new Stack<>();
     boolean gcc;
     private Segment currentSegment;
+    boolean blockComment;
 
     Parser() {
 
@@ -39,6 +40,7 @@ public class Parser {
         SourceFile src = new SourceFile();
         src.read(file);
         preload(src);
+        lineNumber = 0;
         currentProcedure = null;
         for (TokenString s : src) {
             parseLine(s);
@@ -52,6 +54,18 @@ public class Parser {
 
     void parseLine(TokenString line) throws SyntaxException {
         lineNumber++;
+        // comments in gcc
+        if (gcc && line.size() > 1 && "/".equals(line.getToken(0)) && "*".equals(line.getToken(1))) {
+            blockComment = true;
+        } else if (blockComment && line.size() > 1 && "*".equals(line.getToken(0)) && "/".equals(line.getToken(1))) {
+            blockComment = false;
+            return;
+        }
+
+        if (blockComment) {
+            return;
+        }
+
         String firstToken = line.getFirstToken();
         if (".".equals(firstToken)) {
             String trimLine = line.pure();
@@ -76,6 +90,8 @@ public class Parser {
                 processExtern(line, trimLine.substring(".extern".length()).trim());
             } else if ("equ".equalsIgnoreCase(name)) {
                 processEqu(line.toString(), trimLine.substring(".equ".length()).trim());
+//            } else if ("set".equalsIgnoreCase(name)) {
+//                processEqu(line.toString(), trimLine.substring(".set".length()).trim());
             } else {
                 processLine(line);
             }
@@ -605,5 +621,79 @@ public class Parser {
             builder.append(s);
         }
         return ParserUtils.isConstExpression(builder.toString());
+    }
+
+    private void markConstAndVariables(Expression expr) {
+        boolean constFound = false;
+        for (int i = 0; i < expr.size(); i++) {
+            Token t = expr.get(i);
+            if (t.isSomeString()) {
+                String name = t.asString();
+                Constant c = getConstant(name);
+                if (c != null) {
+                    constFound = true;
+                    String val = c.value;
+                    if (ParserUtils.isNumber(val)) {
+                        expr.set(i, new Token(Token.TYPE_NUMBER, val));
+                    } else if (val == null) {// && parser.gcc) {
+                        expr.set(i, new Token(Token.TYPE_CONST_EXPRESSION, ParserUtils.wrapToBrackets(c.name)));
+                    } else {
+                        Expression valExpr = buildExpression(new TokenString(val));
+                        markConstAndVariables(valExpr);
+                        expr.set(i, new Token(Token.TYPE_CONST_EXPRESSION, ParserUtils.wrapToBrackets(valExpr.toString())));
+                    }
+                } else if (getVariable(name) != null) {
+                    expr.set(i, new Token(Token.TYPE_VARIABLE, name));
+                }
+            }
+        }
+
+        if (constFound) {
+            mergeConst(expr);
+        }
+    }
+
+    private void mergeConst(Expression expr) {
+        while (true) {
+            boolean anyMerge = false;
+            for (int i = 1; i < expr.size() - 1; i++) {
+                Token cur = expr.get(i);
+                Token prev = expr.get(i - 1);
+                Token next = expr.get(i + 1);
+                boolean merge;
+                if (cur.isOperator("+", "-", "*", "<<", ">>", "&", "|") &&
+                        prev.isAnyConst() && next.isAnyConst()) {
+                    merge = true;
+                } else if (prev.isOperator("(") && next.isOperator(")") && cur.isAnyConst()) {
+                    String cs = cur.asString();
+                    if (cs.startsWith("(") && cs.endsWith(")")) {
+                        expr.remove(i-1);
+                        expr.remove(i);
+                        anyMerge = true;
+                        break;
+                    }
+                    merge = true;
+                } else {
+                    merge = false;
+                }
+                if (merge) {
+                    Token t = new Token(Token.TYPE_CONST_EXPRESSION, prev.asString() + cur.asString() + next.asString());
+                    expr.set(i - 1, t);
+                    expr.remove(i);
+                    expr.remove(i);
+                    anyMerge = true;
+                    break;
+                }
+            }
+            if (!anyMerge) {
+                break;
+            }
+        } // while
+    }
+
+    Expression buildExpression(TokenString src) {
+        Expression expr = new Expression(src);
+        markConstAndVariables(expr);
+        return expr;
     }
 }

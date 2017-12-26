@@ -1,5 +1,6 @@
 package ru.trolsoft.asmext.files;
 
+import ru.trolsoft.asmext.processor.Token;
 import ru.trolsoft.asmext.utils.TokenString;
 
 import java.io.FileWriter;
@@ -101,9 +102,9 @@ public class OutputFile {
     }
 
 
-    public String getLast() {
-        return get(size()-1);
-    }
+//    public String getLast() {
+//        return get(size()-1);
+//    }
 
     public void clear() {
         lines.clear();
@@ -136,6 +137,18 @@ public class OutputFile {
             sb.append("\t\t").append(src.getComment());
         }
         return sb;
+    }
+
+    public StringBuilder appendCommand(TokenString src, String cmd, Token arg1, Token arg2) {
+        return appendCommand(src, cmd, arg1.asString(), arg2.asString());
+    }
+
+    public StringBuilder appendCommand(TokenString src, String cmd, Token arg1, String arg2) {
+        return appendCommand(src, cmd, arg1.asString(), arg2);
+    }
+
+    public StringBuilder appendCommand(TokenString src, String cmd, Token arg) {
+        return appendCommand(src, cmd, arg.asString());
     }
 
     public void addComment(String s) {

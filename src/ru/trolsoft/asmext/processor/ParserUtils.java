@@ -53,7 +53,7 @@ public class ParserUtils {
 //        return token.startsWith(";") || token.startsWith("//");
 //    }
 
-    static int parseValue(String s) {
+    public static int parseValue(String s) {
         int sign;
         if (s.charAt(0) == '-') {
             s = s.substring(1);
@@ -72,7 +72,10 @@ public class ParserUtils {
         return Integer.parseInt(s);
     }
 
-    static boolean isNumber(String str) {
+    public static boolean isNumber(String str) {
+        if (str == null) {
+            return false;
+        }
         try {
             parseValue(str);
             return true;
@@ -121,9 +124,12 @@ public class ParserUtils {
         }
         String upper = s.toUpperCase();
         if (upper.contains("BYTE")) {
-            if (upper.contains("BYTE1(") || upper.contains("BYTE2(") || upper.contains("BYTE3(") || upper.contains("BYTE4(")) {
+            if (upper.contains("BYTE1(") || upper.contains("BYTE2(") || upper.contains("BYTE3(")
+                    || upper.contains("BYTE4(")) {
                 return true;
             }
+        } else if (upper.contains("LOW(") || upper.contains("HIGH(")) {
+            return true;
         }
         // TODO ---------
         int bc = 0;
@@ -208,6 +214,7 @@ public class ParserUtils {
                 String curr = tokens.get(i);
                 String prev = i > 0 ? tokens.get(i - 1) : null;
                 String next = i < tokens.size() - 1 ? tokens.get(i + 1) : null;
+
                 if (isConstExpression(prev) && isConstExpression(next) && isSimpleMatchOperator(curr)) {
                     tokens.set(i, prev + curr + next);
                     tokens.set(i-1, null);
@@ -221,6 +228,10 @@ public class ParserUtils {
                 } else if ((">>".equals(curr) || "<<".equals(curr) || "|".equals(curr)) && isSomeConstant(prev) && isSomeConstant(next)) {
                     tokens.set(i, prev + curr + next);
                     tokens.set(i-1, null);
+                    tokens.set(i+1, null);
+                    found = true;
+                } else if (("-".equals(curr) || "+".equals(curr)) && isNumber(next) && prev != null && prev.endsWith("=")) {
+                    tokens.set(i, curr + next);
                     tokens.set(i+1, null);
                     found = true;
                 }

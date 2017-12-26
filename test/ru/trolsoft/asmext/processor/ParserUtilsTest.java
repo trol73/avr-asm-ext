@@ -110,34 +110,34 @@ class ParserUtilsTest {
 
         tokens = lst("1", "  ", "+", "\t", "5");
         removeEmptyTokens(tokens);
-        assertEquals(tokens, lst("1", "+", "5"));
+        assertEquals(lst("1", "+", "5"), tokens);
 
         tokens = lst("1", "+", "5");
         mergeTokens(tokens);
         assertTrue(tokens.size() == 1);
-        assertEquals(tokens.get(0), "1+5");
+        assertEquals("1+5", tokens.get(0));
 
         tokens = lst("1", "+", "5", "-", "  ", "r11");
         mergeTokens(tokens);
         assertTrue(tokens.size() == 3);
-        assertEquals(tokens.get(0), "1+5");
-        assertEquals(tokens.get(1), "-");
-        assertEquals(tokens.get(2), "r11");
+        assertEquals("1+5", tokens.get(0));
+        assertEquals("-", tokens.get(1));
+        assertEquals("r11", tokens.get(2));
 
         tokens = lst("(", "1", "\t", "+", "5", ")");
         mergeTokens(tokens);
         assertTrue(tokens.size() == 1);
-        assertEquals(tokens.get(0), "(1+5)");
+        assertEquals("(1+5)", tokens.get(0));
 
         tokens = lst("(", "1", "\t", "+", "5", ")", " ", "*", "2");
         mergeTokens(tokens);
         assertTrue(tokens.size() == 1);
-        assertEquals(tokens.get(0), "(1+5)*2");
+        assertEquals("(1+5)*2", tokens.get(0));
 
         tokens = lst("2", "*", "(", "5", " ", "-", "1", ")", " ", "*", "2");
         mergeTokens(tokens);
         assertTrue(tokens.size() == 1);
-        assertEquals(tokens.get(0), "2*(5-1)*2");
+        assertEquals("2*(5-1)*2", tokens.get(0));
     }
 
     @Test
@@ -148,7 +148,7 @@ class ParserUtilsTest {
         assertFalse(isInBrackets("1"));
         assertFalse(isInBrackets("1+1"));
 
-        assertEquals(wrapToBrackets("1+1"), "(1+1)");
+        assertEquals("(1+1)", wrapToBrackets("1+1"));
     }
 
     @Test

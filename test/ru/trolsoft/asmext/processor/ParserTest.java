@@ -73,6 +73,9 @@ class ParserTest {
                 "push r22"
                 )
         );
+
+        parser = new Parser();
+        test(a("push r1"), a("push r1"));
     }
 
     @Test
@@ -237,11 +240,11 @@ class ParserTest {
         parser.parseLine(".endproc ; my_proc");
 
         assertTrue(parser.getOutput().size() == 5);
-        assertEquals(parser.getOutput().get(0), "my_proc:");
-        assertEquals(parser.getOutput().get(1), "; .proc my_proc");
-        assertEquals(parser.getOutput().get(2), "my_proc__lbl:");
-        assertEquals(parser.getOutput().get(3), "rjmp my_proc__lbl");
-        assertEquals(parser.getOutput().get(4), "; .endproc ; my_proc");
+        assertEquals("my_proc:", parser.getOutput().get(0));
+        assertEquals("; .proc my_proc", parser.getOutput().get(1));
+        assertEquals("my_proc__lbl:", parser.getOutput().get(2));
+        assertEquals("rjmp my_proc__lbl", parser.getOutput().get(3));
+        assertEquals("; .endproc ; my_proc", parser.getOutput().get(4));
     }
 
     @Test
@@ -249,12 +252,12 @@ class ParserTest {
         Parser parser = new Parser();
         parser.parseLine(".proc my_proc");
         parser.parseLine(".args x(r24), y(r22)");
-        assertEquals(parser.currentProcedure.name, "my_proc");
+        assertEquals("my_proc", parser.currentProcedure.name);
         assertTrue(parser.currentProcedure.args.size() == 2);
         assertTrue(parser.currentProcedure.args.containsKey("x"));
         assertTrue(parser.currentProcedure.args.containsKey("y"));
-        assertEquals(parser.currentProcedure.args.get("x").register, "r24");
-        assertEquals(parser.currentProcedure.args.get("y").register, "r22");
+        assertEquals("r24", parser.currentProcedure.args.get("x").register);
+        assertEquals("r22", parser.currentProcedure.args.get("y").register);
         parser.parseLine(".endproc ; my_proc");
         assertTrue(parser.currentProcedure == null);
 
@@ -292,7 +295,7 @@ class ParserTest {
         assertTrue(parser.getOutput().size() == 1);
         parser.parseLine("r0 = abc");
         parser.getOutput().startNewLine();
-        assertTrue(parser.getOutput().get(1).endsWith("ldi\tr0, abc"));
+        assertTrue(parser.getOutput().get(1).endsWith("ldi\tr0, 123"));
 
         parser = new Parser();
         parser.gcc = true;
@@ -336,23 +339,23 @@ class ParserTest {
         parser.parseLine(".equ io_offset = 0x23");
         parser.parseLine(".equ porta = io_offset + 2");
         parser.parseLine("r0 = porta");
-        assertTrue(parser.getOutput().getLast().endsWith("di\tr0, (0x23 + 2)"));
+        assertEquals("ldi\tr0, (0x23+2)", parser.getOutput().getLastLine());
 
         parser.parseLine(".equ portb = ((porta) + 1)");
         parser.parseLine("r1 = portb");
-        assertTrue(parser.getOutput().getLast().endsWith("ldi\tr1, (((0x23 + 2)) + 1)"));
+        assertEquals("ldi\tr1, ((0x23+2)+1)", parser.getOutput().getLastLine());
 
         parser = new Parser(true);
         parser.parseLine(".equ a = 12");
         parser.parseLine(".equ b = a + 7");
         parser.parseLine("r20 = (a + b)");
-        assertTrue(parser.getOutput().getLast().contains("ldi\tr20, (12+(12 + 7))"));
+        assertEquals("ldi\tr20, (12+(12+7))", parser.getOutput().getLastLine());
 
         parser = new Parser(true);
         parser.parseLine(".equ a = 12");
         parser.parseLine(".equ b = a + 7");
         parser.parseLine("r20 = r1 + (a - b)");
-        assertTrue(parser.getOutput().getLast().contains("subi\tr20, -(12-(12 + 7))"));
+        assertEquals("subi\tr20, -(12-(12+7))", parser.getOutput().getLastLine());
     }
 
 
@@ -363,19 +366,19 @@ class ParserTest {
         assertTrue(parser.globalAliases.containsKey("rmp"));
         assertEquals(parser.globalAliases.get("rmp").register, "r16");
         parser.parseLine("rmp = 0");
-        assertTrue(parser.getOutput().getLast().contains("clr\tr16"));
+        assertTrue(parser.getOutput().getLastLine().contains("clr\tr16"));
         parser.parseLine("rmp = 'a'");
-        assertTrue(parser.getOutput().getLast().contains("ldi\tr16, 'a'"));
+        assertTrue(parser.getOutput().getLastLine().contains("ldi\tr16, 'a'"));
         parser.parseLine("ldi\trmp, '0'");
-        assertTrue(parser.getOutput().getLast().contains("ldi\tr16, '0'"));
+        assertTrue(parser.getOutput().getLastLine().contains("ldi\tr16, '0'"));
         parser.parseLine("rmp = ' '");
-        assertTrue(parser.getOutput().getLast().contains("ldi\tr16, ' '"));
+        assertTrue(parser.getOutput().getLastLine().contains("ldi\tr16, ' '"));
 
         parser = new Parser();
         parser.parseLine(".proc my_proc");
         parser.parseLine(".use r16 as x");
         assertTrue(parser.currentProcedure.uses.containsKey("x"));
-        assertEquals(parser.currentProcedure.getAlias("x").register, "r16");
+        assertEquals("r16", parser.currentProcedure.getAlias("x").register);
         parser.parseLine(".endproc");
 
         parser = new Parser();
@@ -384,16 +387,16 @@ class ParserTest {
         assertTrue(parser.globalAliases.containsKey("rmp"));
         assertEquals(parser.globalAliases.get("rmp").register, "R16");
         parser.parseLine("rmp = 0x1B");
-        assertTrue(parser.getOutput().getLast().contains("ldi\tR16, 0x1B"));
+        assertTrue(parser.getOutput().getLastLine().contains("ldi\tR16, 0x1B"));
         parser.parseLine("rmp = ' '");
-        assertTrue(parser.getOutput().getLast().contains("ldi\tR16, ' '"));
+        assertTrue(parser.getOutput().getLastLine().contains("ldi\tR16, ' '"));
 
         parser = new Parser();
         parser.parseLine(".use r16 as x1, r17 as x2");
         assertTrue(parser.globalAliases.containsKey("x1"));
         assertTrue(parser.globalAliases.containsKey("x2"));
-        assertEquals(parser.globalAliases.get("x1").register, "r16");
-        assertEquals(parser.globalAliases.get("x2").register, "r17");
+        assertEquals("r16", parser.globalAliases.get("x1").register);
+        assertEquals("r17", parser.globalAliases.get("x2").register);
 
         parser = new Parser();
         boolean error;
@@ -421,10 +424,10 @@ class ParserTest {
         parser.parseLine("#define __ATMEGA8__");
         parser.parseLine("#ifdef __ATMEGA8__");
         parser.parseLine("#endif __ATMEGA8__");
-        assertEquals(parser.getOutput().size(), 3);
-        assertEquals(parser.getOutput().get(0), "#define __ATMEGA8__");
-        assertEquals(parser.getOutput().get(1), "#ifdef __ATMEGA8__");
-        assertEquals(parser.getOutput().get(2), "#endif __ATMEGA8__");
+        assertEquals(3, parser.getOutput().size());
+        assertEquals("#define __ATMEGA8__", parser.getOutput().get(0));
+        assertEquals("#ifdef __ATMEGA8__", parser.getOutput().get(1));
+        assertEquals("#endif __ATMEGA8__", parser.getOutput().get(2));
     }
 
 
@@ -442,7 +445,20 @@ class ParserTest {
         parser.parseLine(".equ DOR=0");
         parser.parseLine(".equ PE=4");
         parser.parseLine("r11 &= (1<<FE)|(1<<DOR)|(1<<PE)");
-        assertEquals(parser.getOutput().getLastLine(), "andi\tr11, (1<<FE)|(1<<DOR)|(1<<PE)");
+        assertEquals("andi\tr11, (1<<FE)|(1<<DOR)|(1<<PE)", parser.getOutput().getLastLine());
+
+        // rmp = cPre2|(1<<WGM21)		; CTC mode and prescaler
+        // TODO
+
+        parser = new Parser(true);
+        parser.parseLine(".equ LCD_DELTA_X");
+        parser.parseLine("r25.r24 += LCD_DELTA_X");
+        assertEquals("adiw\tr24, (LCD_DELTA_X)", parser.getOutput().getLastLine());
+
+        parser = new Parser(false);
+        parser.parseLine(".equ LCD_DELTA_X");
+        parser.parseLine("if (r25 == LCD_DELTA_X) goto label");
+        assertEquals("breq\tlabel", parser.getOutput().getLastLine());
     }
 
 

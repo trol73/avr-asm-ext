@@ -33,7 +33,7 @@ class CompilerTest {
         res = strip(res);
 //        System.out.println(outStr);
 //        System.out.println(res);
-        assertEquals(outStr, res);
+        assertEquals(res, outStr);
     }
 
 
@@ -75,13 +75,15 @@ class CompilerTest {
         testLine("if (r1 == 0) goto lbl // comment", "tst\tr1\t\t// comment\nbreq\tlbl\t\t// comment");
 
         testLine("if (r1 < '9'+1) goto lbl", "cpi\tr1, '9'+1\nbrlo\tlbl");
-
     }
 
     @Test
     void testIfGroupGoto() throws SyntaxException {
         testLine("if (r21.r20 < r23.r22) goto lbl", "cp\tr20, r22\ncpc\tr21, r23\nbrlo\tlbl");
+        testLine("if (r25.r24 == ZH.ZL) goto lbl", "cp\tr24, ZL\ncpc\tr25, ZH\nbreq\tlbl");
+        testLine("if (r25.r24 == Z) goto lbl", "cp\tr24, ZL\ncpc\tr25, ZH\nbreq\tlbl");
     }
+
 
     @Test
     void testProcCalls() throws SyntaxException {
@@ -97,6 +99,9 @@ class CompilerTest {
         testLine("rjmp my_proc (x: r24, y: r0) ; comment", "mov\tr22, r0\t ; y = r0\nrjmp\tmy_proc\t\t; comment");
         testLine("rjmp my_proc (x: r24 + 1, y: r0) ; comment", "inc r24 ; x = r24+1\nmov\tr22, r0\t ; y = r0\nrjmp\tmy_proc\t\t; comment");
         testLine("rjmp my_proc (x: r24 + 1*2, y: r0) ; comment", "subi r24, -(1*2) ; x = r24+1*2\nmov\tr22, r0\t ; y = r0\nrjmp\tmy_proc\t\t; comment");
+
+        testLine("rjmp my_proc ; comment", "rjmp\tmy_proc\t\t; comment");
+        testLine("rcall my_proc // comment", "rcall\tmy_proc\t\t// comment");
 
         proc = new Procedure("my_proc");
         parser.procedures.clear();
