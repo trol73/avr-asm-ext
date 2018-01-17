@@ -36,6 +36,7 @@ class TokenStringTest {
         assertEquals(as("x=';';comment"), a("x", "=", "';'"));
         assertEquals(as(".proc abc"), a(".", "proc", " ", "abc"));
         assertEquals(as("label: ;cmt"), a("label", ":", " "));
+        assertEquals(as("@label: ;cmt"), a("@label", ":", " "));
         assertEquals(as("x=';';comment ; comment // comment"), a("x", "=", "';'"));
         assertEquals(as(" \t .proc abc"), a(".", "proc", " ", "abc"));
 

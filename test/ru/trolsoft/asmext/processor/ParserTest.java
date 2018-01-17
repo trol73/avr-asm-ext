@@ -243,7 +243,7 @@ class ParserTest {
         assertEquals("my_proc:", parser.getOutput().get(0));
         assertEquals("; .proc my_proc", parser.getOutput().get(1));
         assertEquals("my_proc__lbl:", parser.getOutput().get(2));
-        assertEquals("rjmp my_proc__lbl", parser.getOutput().get(3));
+        assertEquals("rjmp\tmy_proc__lbl", parser.getOutput().get(3));
         assertEquals("; .endproc ; my_proc", parser.getOutput().get(4));
     }
 

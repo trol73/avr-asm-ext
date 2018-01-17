@@ -1,6 +1,7 @@
 package ru.trolsoft.asmext.processor;
 
 import org.junit.jupiter.api.Test;
+import ru.trolsoft.asmext.utils.TokenString;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -8,7 +9,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class ExpressionTest {
+class ExpressionTest {
 
     private static List<String> l(String ...args) {
         List result = new ArrayList();
@@ -37,6 +38,18 @@ public class ExpressionTest {
         assertTrue(e.get(0).getType() == Token.TYPE_REGISTER);
         assertTrue(e.get(1).getType() == Token.TYPE_OPERATOR);
         assertTrue(e.get(2).getType() == Token.TYPE_REGISTER);
+    }
+
+    @Test
+    void test2() {
+        Expression e;
+        e = new Expression(new TokenString("lbl:"));
+        assertEquals("lbl", e.getFirst().asString());
+        assertTrue(e.getLast().isOperator(":"));
+
+        e = new Expression(new TokenString("@lbl2:"));
+        assertEquals("@lbl2", e.getFirst().asString());
+        assertTrue(e.getLast().isOperator(":"));
 
     }
 }

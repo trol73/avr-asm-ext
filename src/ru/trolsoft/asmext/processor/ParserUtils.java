@@ -95,6 +95,9 @@ public class ParserUtils {
         return expr;
     }
 
+    static String removeBrackets(String expr) {
+        return expr.substring(1, expr.length()-1);
+    }
 
 
     static Variable.Type getVarType(String type) {

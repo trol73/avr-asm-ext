@@ -15,7 +15,7 @@ public class Expression implements Iterable<Token> {
 
     static {
         String[] operators = {
-                "=", "==", "!=", ">=", "<=", "+", "-", "&", "|", "<<", ">>",
+                "=", "==", "!=", ">=", "<=", "+", "-", "&", "|", ":", ",", "<<", ">>",
                 "+=", "-=", "&=", "|=", "<<=", ">>=", "(", ")", "++", "--"
         };
         OPERATORS = new HashSet<>(Arrays.asList(operators));
@@ -150,6 +150,10 @@ public class Expression implements Iterable<Token> {
 
     public void add(int index, Token t) {
         list.add(index, t);
+    }
+
+    public void add(Token t) {
+        list.add(t);
     }
 
     public void clear() {

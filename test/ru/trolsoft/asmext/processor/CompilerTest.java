@@ -95,10 +95,10 @@ class CompilerTest {
         proc.addArg(new Alias("y", "r22"));
         parser.procedures.put(proc.name, proc);
 
-        testLine("rcall my_proc (x: 1, y: r0) // comment", "ldi\tr24, 1\t ; x = 1\nmov\tr22, r0\t ; y = r0\nrcall\tmy_proc\t\t// comment");
-        testLine("rjmp my_proc (x: r24, y: r0) ; comment", "mov\tr22, r0\t ; y = r0\nrjmp\tmy_proc\t\t; comment");
-        testLine("rjmp my_proc (x: r24 + 1, y: r0) ; comment", "inc r24 ; x = r24+1\nmov\tr22, r0\t ; y = r0\nrjmp\tmy_proc\t\t; comment");
-        testLine("rjmp my_proc (x: r24 + 1*2, y: r0) ; comment", "subi r24, -(1*2) ; x = r24+1*2\nmov\tr22, r0\t ; y = r0\nrjmp\tmy_proc\t\t; comment");
+        testLine("rcall my_proc (x: 1, y: r0) // comment", "ldi\tr24, 1\nmov\tr22, r0\nrcall\tmy_proc\t\t// comment");
+        testLine("rjmp my_proc (x: r24, y: r0) ; comment", "mov\tr22, r0\nrjmp\tmy_proc\t\t; comment");
+        testLine("rjmp my_proc (x: r24 + 1, y: r0) ; comment", "inc r24\nmov\tr22, r0\nrjmp\tmy_proc\t\t; comment");
+        testLine("rjmp my_proc (x: r24 + 1*2, y: r0) ; comment", "subi r24, -(1*2)\nmov\tr22, r0\nrjmp\tmy_proc\t\t; comment");
 
         testLine("rjmp my_proc ; comment", "rjmp\tmy_proc\t\t; comment");
         testLine("rcall my_proc // comment", "rcall\tmy_proc\t\t// comment");
@@ -107,14 +107,14 @@ class CompilerTest {
         parser.procedures.clear();
         proc.addArg(new Alias("x", "r24"));
         parser.procedures.put(proc.name, proc);
-        testLine("rcall my_proc (10) // comment", "ldi\tr24, 10\t ; x = 10\nrcall\tmy_proc\t\t// comment");
-        testLine("rcall my_proc (xl)", "mov\tr24, xl\t ; x = xl\nrcall\tmy_proc");
+        testLine("rcall my_proc (10) // comment", "ldi\tr24, 10\nrcall\tmy_proc\t\t// comment");
+        testLine("rcall my_proc (xl)", "mov\tr24, xl\nrcall\tmy_proc");
 
         parser.parseLine(".extern ext_proc (var: r24)");
-        testLine("rcall ext_proc (r1)", "mov\tr24, r1\t ; var = r1\nrcall\text_proc");
+        testLine("rcall ext_proc (r1)", "mov\tr24, r1\nrcall\text_proc");
 
         parser.parseLine(".extern ext_var : byte");
-        testLine("rcall ext_proc (ext_var)", "lds\tr24, ext_var\t ; var = ext_var\nrcall\text_proc");
+        testLine("rcall ext_proc (ext_var)", "lds\tr24, ext_var\nrcall\text_proc");
 
         parser = new Parser();
         parser.gcc = false;
@@ -124,7 +124,7 @@ class CompilerTest {
         parser.parseLine(".endproc");
 
         parser.parseLine("rcall my_proc(0x03)");
-        assertTrue(parser.getOutput().get(5).contains("ldi\tr24, 0x03\t; val = 0x03"));
+        assertTrue(parser.getOutput().get(5).contains("ldi\tr24, 0x03"));
         parser.parseLine("rcall my_proc('=')");
     }
 

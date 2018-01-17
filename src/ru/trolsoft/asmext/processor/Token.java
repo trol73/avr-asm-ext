@@ -132,6 +132,10 @@ public class Token {
         return type == TYPE_OPERATOR && operator.equals(strings[0]);
     }
 
+    public boolean isRegister(String reg) {
+        return type == TYPE_REGISTER && reg.equalsIgnoreCase(strings[0]);
+    }
+
     public boolean isRegGroup(int size) {
         return (type == TYPE_REGISTER_GROUP && strings.length == size) || (type == TYPE_PAIR && size == 2);
     }

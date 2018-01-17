@@ -1,14 +1,12 @@
 package ru.trolsoft.asmext.processor;
 
-import ru.trolsoft.asmext.data.NamedPair;
-import ru.trolsoft.asmext.data.Variable;
+import ru.trolsoft.asmext.data.Argument;
 import ru.trolsoft.asmext.data.Procedure;
 import ru.trolsoft.asmext.files.OutputFile;
 import ru.trolsoft.asmext.utils.TokenString;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.StringTokenizer;
 
 class Compiler {
 
@@ -33,7 +31,7 @@ class Compiler {
             case "rcall":
             case "jmp":
             case "rjmp":
-                compileCall(src, out);
+                compileCall(src, parser.buildExpression(src), out);
                 break;
             case "if":
                 if (compileIfGoto(src, parser.buildExpression(src), out)) {
@@ -45,143 +43,107 @@ class Compiler {
     }
 
 
-    private Procedure parseProcCallArgs(List<NamedPair> args, TokenString src) throws SyntaxException {
-        final int STATE_WAIT_INSTRUCTION = 0;
-        final int STATE_WAIT_PROC_NAME = 1;
-        final int STATE_WAIT_ARGS = 2;
-        final int STATE_ARG_NAME = 3;
-        final int STATE_WAIT_NAME_SEPARATOR = 4;
-        final int STATE_ARG_VALUE = 5;
-//        final int STATE_DONE_ARG = 7;
-        final int STATE_DONE = 6;
-        int state = STATE_WAIT_INSTRUCTION;
-        String procedureName = null;
-        String argName = null;
-        String argValue = "";
-        Procedure procedure = null;
-        for (String s : src) {
-            if (s.trim().isEmpty()) {
-                continue;
-            }
-            switch (state) {
-                case STATE_WAIT_INSTRUCTION:
-                    if (!s.equals(src.getFirstToken())) {
-                        throw new SyntaxException("internal error");
-                    }
-                    state = STATE_WAIT_PROC_NAME;
-                    break;
-                case STATE_WAIT_PROC_NAME:
-                    procedureName = s;
-                    procedure = parser.procedures.get(procedureName);
-                    state = STATE_WAIT_ARGS;
-                    break;
-                case STATE_WAIT_ARGS:
-                    if (s.equals("(")) {
-                        state = STATE_ARG_NAME;
-                        if (procedure == null) {
-                            throw new SyntaxException("undefined procedure: \"" + procedureName + '"');
-                        }
-                    } else {
-                        throw new SyntaxException("wrong call syntax");
-                    }
-                    break;
-                case STATE_ARG_NAME:
-                    argName = s;
-                    argValue = "";
-                    state = STATE_WAIT_NAME_SEPARATOR;
-                    break;
-                case STATE_WAIT_NAME_SEPARATOR:
-                    if (")".equals(s) && procedure.args.size() == 1) {
-                        String name = procedure.args.values().iterator().next().name;
-                        args.add(new NamedPair(name, argName));
-                    } else if (!":".equals(s)) {
-                        throw new SyntaxException("wrong call syntax");
-                    }
-                    state = STATE_ARG_VALUE;
-                    break;
-                case STATE_ARG_VALUE:
-                    if (",".equals(s)) {
-                        args.add(new NamedPair(argName, argValue));
-                        state = STATE_ARG_NAME;
-                        argValue = "";
-                    } else if (")".equals(s)) {
-                        args.add(new NamedPair(argName, argValue));
-                        state = STATE_DONE;
-                        argValue = "";
-                    } else {
-                        argValue += s;
-                    }
-                    break;
-//                case STATE_DONE_ARG:
-//                    if (",".equals(s)) {
-//                        state = STATE_ARG_NAME;
-//                    } else if (")".equals(s)) {
-//                        state = STATE_DONE;
-//                    }
-//                    break;
-                case STATE_DONE:
-                    throw new SyntaxException("wrong call syntax");
-            }
+    private Procedure parseProcedureArgs(List<Argument> args, Expression expr) throws SyntaxException {
+        if (expr.size() < 2) {
+            wrongCallSyntaxError();
         }
-
-        if (procedureName == null || args.isEmpty()) {
-            return null;
+        Token procedureName = expr.get(1);
+        Procedure procedure = parser.procedures.get(procedureName.asString());
+        if (expr.size() == 2) {
+            return procedure;
         }
-
-        if (procedure == null) {
-            throw new SyntaxException("undefined procedure: \"" + procedureName + '"');
+        if (expr.size() == 3) {
+            String argInBrackets = expr.getLast().asString();
+            if (!ParserUtils.isInBrackets(argInBrackets)) {
+                wrongCallSyntaxError();
+            }
+            Expression argExpr = new Expression(new TokenString(ParserUtils.removeBrackets(argInBrackets)));
+            parseSingleAnonymousArg(procedure, args, argExpr);
+            return procedure;
+        }
+        if (expr.size() == 5) {
+            if (!expr.getLast(2).isOperator("(") || !expr.getLast().isOperator(")")) {
+                wrongCallSyntaxError();
+            }
+            Expression argExpr = new Expression();
+            argExpr.add(expr.getLast(1));
+            parseSingleAnonymousArg(procedure, args, argExpr);
+            return procedure;
+        }
+        if (!expr.get(2).isOperator("(") || !expr.getLast().isOperator(")")) {
+            wrongCallSyntaxError();
+        }
+        int index = 3;
+        while (index < expr.size()-1) {
+            Token name = expr.get(index++);
+            Token colon = index < expr.size() ? expr.get(index++) : null;
+            if (colon == null || !colon.isOperator(":")) {
+                wrongCallSyntaxError();
+            }
+            Expression argExpr = new Expression();
+            while (index < expr.size()-1) {
+                Token token = expr.get(index++);
+                if (token.isOperator(",")) {
+                    break;
+                }
+                argExpr.add(token);
+            }
+            Argument arg = new Argument(name.toString(), argExpr);
+            args.add(arg);
         }
         return procedure;
     }
 
-    private void checkCallArguments(Procedure procedure, List<NamedPair> args) throws SyntaxException {
-        for (NamedPair arg : args) {
+
+    private void parseSingleAnonymousArg(Procedure procedure, List<Argument> args, Expression expr) throws SyntaxException {
+        if (procedure.args.size() != 1) {
+            wrongCallSyntaxError();
+        }
+        String argName = procedure.args.keySet().iterator().next();
+        Argument arg = new Argument(argName, expr);
+        args.add(arg);
+    }
+
+    private void checkCallArguments(Procedure procedure, List<Argument> args) throws SyntaxException {
+        for (Argument arg : args) {
             if (!procedure.args.containsKey(arg.name)) {
                 throw new SyntaxException("wrong argument: " + arg.name);
             }
         }
     }
 
-    private void compileCall(TokenString src, OutputFile out) throws SyntaxException {
-        List<NamedPair> args = new ArrayList<>();
-        Procedure procedure = parseProcCallArgs(args, src);
-        if (procedure != null) {
-            checkCallArguments(procedure, args);
-            out.addComment(src);
-
-            for (NamedPair arg : args) {
-                String argName = arg.name;
-                String regName = procedure.args.get(argName).register;
-                String value = arg.value;
-                if (!regName.equalsIgnoreCase(value)) {
-                    addArgumentAssign(out, argName, regName, value);
-                } else {
-                    out.startNewLine().append(src.getIndent()).append("; ").append(argName).append(" = ").append(value);
-                }
-            } // for args
-            out.appendCommand(src, src.getFirstToken(), procedure.name);
+    private void compileCall(TokenString src, Expression expr, OutputFile out) throws SyntaxException {
+        List<Argument> args = new ArrayList<>();
+        Procedure procedure = parseProcedureArgs(args, expr);
+        if (procedure == null) {
+            out.appendCommand(src, expr.getFirst().asString(), expr.get(1));
             return;
-        } // if procedure
+        }
+        checkCallArguments(procedure, args);
+        out.addComment(src);
 
-        compileDefault(src, out);
-
+        for (Argument arg : args) {
+            String argName = arg.name;
+            String regName = procedure.args.get(argName).register;
+            Expression value = arg.expr;
+            if (value.size() != 1 || !value.getFirst().isRegister(regName)) {
+                addArgumentAssign(out, argName, regName, value);
+            } else {
+                out.startNewLine().append(src.getIndent()).append("; ").append(argName).append(" = ").append(value);
+            }
+        } // for args
+        out.appendCommand(src, src.getFirstToken(), procedure.name);
     }
 
-    private void addArgumentAssign(OutputFile out, String argName, String regName, String value) throws SyntaxException {
-        StringTokenizer tokenizer = new StringTokenizer(value, "+-", true);
-        String[] t = new String[2 + tokenizer.countTokens()];
-        t[0] = regName;
-        t[1] = "=";
-        int i = 2;
-        while (tokenizer.hasMoreTokens()) {
-            t[i++] = tokenizer.nextToken();
-        }
+    private void addArgumentAssign(OutputFile out, String argName, String regName, Expression value) throws SyntaxException {
+        value.add(0, new Token(Token.TYPE_REGISTER, regName));
+        value.add(1, new Token(Token.TYPE_OPERATOR, "="));
+
         try {
-            TokenString ts = new TokenString(t);
-            if (!expressionsCompiler.compile(ts, parser.buildExpression(ts), out)) {
+            if (!expressionsCompiler.compile(new TokenString(""), value, out)) {
                 throw new SyntaxException("wrong value: '" + value + "'");
             }
-            out.getLastLineBuilder().append("\t; ").append(argName).append(" = ").append(value);//.append("\n");
+            //out.getLastLineBuilder().append("\t; ").append(argName).append(" = ").append(value);
         } catch (ExpressionsCompiler.CompileException e) {
             throw new SyntaxException(e.getMessage());
         }
@@ -315,10 +277,13 @@ class Compiler {
         if (src.firstTokenIs(".") || ParserUtils.isInstruction(first) || first.startsWith("#")) {
             return false;
         }
-        Variable var = parser.getVariable(src.getFirstToken());
-        if (var != null && var.isPointer() && src.size() >= 2 && ":".equals(src.getToken(1))) {
+        if (src.size() >= 2 && ":".equals(src.getToken(1))) {
             return false;
         }
+//        Variable var = parser.getVariable(src.getFirstToken());
+//        if (var != null && var.isPointer() && src.size() >= 2 && ":".equals(src.getToken(1))) {
+//            return false;
+//        }
         return true;
     }
 
@@ -358,7 +323,15 @@ class Compiler {
     }
 
     private static void sizesMismatchError() throws  SyntaxException {
-    throw new SyntaxException("sizes mismatch");
+        throw new SyntaxException("sizes mismatch");
+    }
+
+    private static void wrongCallSyntaxError() throws SyntaxException {
+        throw new SyntaxException("wrong call/jump syntax");
+    }
+
+    private static void undefinedProcedureError(String name) throws SyntaxException {
+        throw new SyntaxException("undefined procedure: \"" + name + '"');
     }
 
 }

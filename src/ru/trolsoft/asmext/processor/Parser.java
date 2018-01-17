@@ -54,15 +54,7 @@ public class Parser {
 
     void parseLine(TokenString line) throws SyntaxException {
         lineNumber++;
-        // comments in gcc
-        if (gcc && line.size() > 1 && "/".equals(line.getToken(0)) && "*".equals(line.getToken(1))) {
-            blockComment = true;
-        } else if (blockComment && line.size() > 1 && "*".equals(line.getToken(0)) && "/".equals(line.getToken(1))) {
-            blockComment = false;
-            return;
-        }
-
-        if (blockComment) {
+        if (skipComment(line)) {
             return;
         }
 
@@ -79,7 +71,7 @@ public class Parser {
             } else if ("proc".equals(name)) {
                 startProcedure(line);
             } else if ("endproc".equals(name)) {
-                endProc(line);
+                endProcedure(line);
             } else if ("args".equals(name)) {
                 loadProcArgs(line);
             } else if ("loop".equals(name)) {
@@ -105,6 +97,20 @@ public class Parser {
         } else {
             processLine(line);
         }
+    }
+
+    private boolean skipComment(TokenString line) {
+        // comments in gcc
+        if (gcc && line.size() > 1 && "/".equals(line.getToken(0)) && "*".equals(line.getToken(1))) {
+            blockComment = true;
+        } else if (blockComment && line.size() > 1 && "*".equals(line.getToken(0)) && "/".equals(line.getToken(1))) {
+            blockComment = false;
+            return true;
+        }
+        if (blockComment) {
+            return true;
+        }
+        return false;
     }
 
     private void preload(SourceFile src) throws SyntaxException {
@@ -221,7 +227,7 @@ public class Parser {
         output.addComment(src);
     }
 
-    private void endProc(TokenString src) throws SyntaxException {
+    private void endProcedure(TokenString src) throws SyntaxException {
         src.removeEmptyTokens();
         if (src.size() != 2) {
             error("extra characters in line");
