@@ -40,8 +40,11 @@ public class Main {
 	if (rmp == cLF) goto @NoPar
         if (rmp == cCR || rmp == cLF) goto @NoPar
 
-    sbi	_SFR_IO_ADDR(UCSRB), UDRIE			; enable UDRE interrupt
-        $port[UCSRB].UDRIE = 1
+
+    sbrs rFlg,bEdge
+    rjmp CycleM5a
+
+        if (!io[rFlg].bEdge) rjmp CycleM5a
 
 
 .args v(ZH.ZL)
@@ -66,60 +69,6 @@ public class Main {
 	rcall DisplDecX2
 
 
-st X+, rmp
-        $mem[X++] = rmp
-in	rmp, PINC
-        rmp = $io[PINC]
-out	OCR2, rmp
-        $io[OCR2] = rmp
-ld rRes4, Z+
-        rRes4 = $mem[Z++]
-
-	ld rRes1, Z+ ; copy counter value
-	ld rRes2, Z+
-	ld rRes3, Z+
-	ld rRes4, Z+
-	    (rRes1, rRes2, rRes3, rRes4) = $mem[Z++
-	    (rRes1, rRes2, rRes3, rRes4) <- $mem[Z++]
-
-	rmp = ' '
-	st X+,rmp
-	rmp = 'H'
-	st X+,rmp
-	rmp = 'z'
-	st X+,rmp
-	rmp = ' '
-	st X,rmp
-	        $ram[X++] = rmp(' ', 'H', 'z')
-	        $ram[X] = rmp = ' '
-
-		lpm
-		Z ++
-
-		st X+, R0
-		    $mem[X++] = r0 = $prg[Z++]
-
-
-
-
-
-
-	st Z+, rRes1 ; copy counter value
-	st Z+, rRes2
-	st Z+, rRes3
-	st Z+, rRes4
-	        $mem[Z++] <- rRes1, rRes2, rRes3, rRes4
-	        $mem[Z++] = (rRes1, rRes2, rRes3, rRes4)
-
-	rmp = ' '
-	st	X+, rmp
-	        $mem[X++] = rmp = ' '
-	        rmp = ' ' -> $mem[X++]
-
-	rmp = '0' + R2
-	st	X+, rmp
-	    $mem[X++] = '0' + R2
-
 
 
 
@@ -130,9 +79,6 @@ ld rRes4, Z+
 
 if (r2.r1 < ZH.ZL) goto @2 ; ended subtraction
 
-    .EQU cDecSep = '.' 		; decimal separator for numbers displayed
-	ldi	rmp, cDecSep
-	;rmp = cDecSep
 
 	.loop (rmp = 16)
 	UartMonF1:
@@ -148,9 +94,6 @@ if (r2.r1 < ZH.ZL) goto @2 ; ended subtraction
 	if (ZL == 8) goto Interval_enc_clockwise
 	if (ZL == 14) goto Interval_enc_clockwise
 
-
-	; rmp = $data[Z++]
-	ld rmp, Z+ ; read next char
 
 
 

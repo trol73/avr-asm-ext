@@ -171,7 +171,7 @@ public class TokenString implements Comparable<TokenString>, CharSequence, Itera
         if (line == null) {
             return result;
         }
-        final String delim = " \t,.+-*/=():;<>!&|";
+        final String delim = " \t,.+-*/=():;<>!&|[]";
         StringTokenizer tokenizer = new StringTokenizer(line, delim, true);
         boolean commentStarted = false;
         while (tokenizer.hasMoreElements()) {

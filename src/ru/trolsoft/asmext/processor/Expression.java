@@ -16,7 +16,7 @@ public class Expression implements Iterable<Token> {
     static {
         String[] operators = {
                 "=", "==", "!=", ">=", "<=", "+", "-", "&", "|", ":", ",", "<<", ">>",
-                "+=", "-=", "&=", "|=", "<<=", ">>=", "(", ")", "++", "--"
+                "+=", "-=", "&=", "|=", "<<=", ">>=", "(", ")", "++", "--", "."
         };
         OPERATORS = new HashSet<>(Arrays.asList(operators));
         String[] keywords = {
@@ -31,65 +31,24 @@ public class Expression implements Iterable<Token> {
 
     }
 
-    public Expression(TokenString src) {
+    Expression(TokenString src) {
         this(mergeTokens(src.getTokens()));
     }
 
-    public Expression(List<String> tokens) {
+    Expression(List<String> tokens) {
         int i = 0;
         final int n = tokens.size();
         while (i < n) {
             String s = tokens.get(i++);
             String next = i < n ? tokens.get(i) : null;
             if (ParserUtils.isRegister(s)) {
+
                 if (".".equals(next)) {
-                    int cnt = 2;
-                    i++;
-                    while (i < n) {
-                        s = tokens.get(i);
-                        if (ParserUtils.isRegister(s)) {
-                            cnt++;
-                            i++;
-                        } else {
-                            break;
-                        }
-                        if (i >= n) {
-                            break;
-                        }
-                        s = tokens.get(i);
-                        if (".".equals(s)) {
-                            cnt++;
-                            i++;
-                        }
-                    }
-                    if (cnt % 2 != 0) {
-                        String[] regs = new String[cnt / 2 + 1];
-                        int index = 0;
-                        for (int j = i - cnt; j < i; j += 2) {
-                            regs[index++] = tokens.get(j);
-                        }
-                        Token group = new Token(Token.TYPE_REGISTER_GROUP, regs);
-                        list.add(group);
-                    } else if (cnt == 2) {
-                        Token t = new Token(Token.TYPE_REGISTER, tokens.get(i - cnt));
-                        list.add(t);
-                        t = new Token(Token.TYPE_OTHER, tokens.get(i - cnt + 1));
-                        list.add(t);
-                    } else {
-                        String[] regs = new String[cnt / 2 - 1];
-                        int index = 0;
-                        for (int j = i - cnt; j < i; j += 2) {
-                            regs[index++] = tokens.get(j);
-                        }
-                        Token group = new Token(Token.TYPE_REGISTER_GROUP, regs);
-                        list.add(group);
-                        Token t = new Token(Token.TYPE_OTHER, tokens.get(i - 1));
-                        list.add(t);
-                    }
-                    continue;
-                } // group
-                Token reg = new Token(Token.TYPE_REGISTER, s);
-                list.add(reg);
+                    i = tryToParseGroupAndReturnIndex(tokens, i);
+                } else { // group
+                    Token reg = new Token(Token.TYPE_REGISTER, s);
+                    list.add(reg);
+                }
             } else if (OPERATORS.contains(s)) {         // register
                 Token operator = new Token(Token.TYPE_OPERATOR, s);
                 list.add(operator);
@@ -105,17 +64,113 @@ public class Expression implements Iterable<Token> {
             } else if (ParserUtils.isConstExpression(s)) {
                 Token constExp = new Token(Token.TYPE_CONST_EXPRESSION, s);
                 list.add(constExp);
+            } else if (getArrayTokenType(s) >= 0) {
+                i = tryToParseArrayAndReturnIndex(s, tokens, i);
             } else {
                 Token other = new Token(Token.TYPE_OTHER, s);
                 list.add(other);
             }
             // TODO
 //            public static final int TYPE_VARIABLE = 6;
-//            public static final int TYPE_SYS_ARRAY = 8;
 
-        } // while
+        }
     }
 
+
+    private int tryToParseGroupAndReturnIndex(List<String> tokens, int i) {
+        final int n = tokens.size();
+        int cnt = 2;
+        i++;
+        while (i < n) {
+            String s = tokens.get(i);
+            if (ParserUtils.isRegister(s)) {
+                cnt++;
+                i++;
+            } else {
+                break;
+            }
+            if (i >= n) {
+                break;
+            }
+            s = tokens.get(i);
+            if (".".equals(s)) {
+                cnt++;
+                i++;
+            }
+        }
+        if (cnt % 2 != 0) {
+            String[] regs = new String[cnt / 2 + 1];
+            int index = 0;
+            for (int j = i - cnt; j < i; j += 2) {
+                regs[index++] = tokens.get(j);
+            }
+            Token group = new Token(Token.TYPE_REGISTER_GROUP, regs);
+            list.add(group);
+        } else if (cnt == 2) {
+            Token t = new Token(Token.TYPE_REGISTER, tokens.get(i - cnt));
+            list.add(t);
+            t = new Token(Token.TYPE_OTHER, tokens.get(i - cnt + 1));
+            list.add(t);
+        } else {
+            String[] regs = new String[cnt / 2 - 1];
+            int index = 0;
+            for (int j = i - cnt; j < i; j += 2) {
+                regs[index++] = tokens.get(j);
+            }
+            Token group = new Token(Token.TYPE_REGISTER_GROUP, regs);
+            list.add(group);
+            Token t = new Token(Token.TYPE_OTHER, tokens.get(i - 1));
+            list.add(t);
+        }
+        return i;
+    }
+
+    private int tryToParseArrayAndReturnIndex(String arrayName, List<String> tokens, int i) {
+        String s = tokens.get(i);
+        if (i < tokens.size() - 2 && "[".equals(s)) {
+            s = tokens.get(i+1);
+            if (isIncOrDec(s) && i < tokens.size() - 3) {
+                String pair = tokens.get(i+2);
+                if (ParserUtils.isPair(pair) && "]".equals(tokens.get(i+3))) {
+                    String[] strings = new String[] {s, pair};
+                    Token t = new Token(getArrayTokenType(arrayName), strings);
+                    list.add(t);
+                    return i + 4;
+                }
+            } else { //if (ParserUtils.isPair(s)) {
+                if ("]".equals(tokens.get(i+2))) {
+                    Token t = new Token(getArrayTokenType(arrayName), s);
+                    list.add(t);
+                    return i + 3;
+                } else if (i < tokens.size() - 3 && isIncOrDec(tokens.get(i+2)) && "]".equals(tokens.get(i+3))) {
+                    String postOp = tokens.get(i+2);
+                    String[] strings = new String[] {s, postOp};
+                    Token t = new Token(getArrayTokenType(arrayName), strings);
+                    list.add(t);
+                    return i + 4;
+                }
+            }
+        }
+        Token t = new Token(Token.TYPE_OTHER, arrayName);
+        list.add(t);
+        return i;
+    }
+
+
+    private int getArrayTokenType(String name) {
+        if ("ram".equals(name)) {
+            return Token.TYPE_ARRAY_RAM;
+        } else if ("prg".equals(name)) {
+            return Token.TYPE_ARRAY_PRG;
+        } else if ("io".equals(name)) {
+            return Token.TYPE_ARRAY_IO;
+        }
+        return -1;
+    }
+
+    private boolean isIncOrDec(String s) {
+        return "++".equals(s) || "--".equals(s);
+    }
 
     @Override
     public Iterator<Token> iterator() {

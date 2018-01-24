@@ -111,11 +111,11 @@ public class OutputFile {
         lastLine = null;
     }
 
-    public StringBuilder appendCommand(String indent, String cmd, String arg1, String arg2) {
+    private StringBuilder appendCommand(String indent, String cmd, String arg1, String arg2) {
         return startNewLine().append(indent).append(cmd).append('\t').append(arg1).append(", ").append(arg2);
     }
 
-    public StringBuilder appendCommand(String indent, String cmd, String arg) {
+    private StringBuilder appendCommand(String indent, String cmd, String arg) {
         startNewLine().append(indent).append(cmd);
         if (arg != null) {
             lastLine.append('\t').append(arg);
@@ -149,6 +149,10 @@ public class OutputFile {
 
     public StringBuilder appendCommand(TokenString src, String cmd, Token arg) {
         return appendCommand(src, cmd, arg.asString());
+    }
+
+    public StringBuilder appendCommand(TokenString src, String cmd) {
+        return appendCommand(src, cmd, (String) null);
     }
 
     public void addComment(String s) {

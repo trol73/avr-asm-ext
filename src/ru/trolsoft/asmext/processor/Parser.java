@@ -73,7 +73,7 @@ public class Parser {
             } else if ("endproc".equals(name)) {
                 endProcedure(line);
             } else if ("args".equals(name)) {
-                loadProcArgs(line);
+                loadProcedureArgs(line);
             } else if ("loop".equals(name)) {
                 processStartLoop(line);
             } else if ("endloop".equals(name)) {
@@ -82,8 +82,8 @@ public class Parser {
                 processExtern(line, trimLine.substring(".extern".length()).trim());
             } else if ("equ".equalsIgnoreCase(name)) {
                 processEqu(line.toString(), trimLine.substring(".equ".length()).trim());
-//            } else if ("set".equalsIgnoreCase(name)) {
-//                processEqu(line.toString(), trimLine.substring(".set".length()).trim());
+            } else if ("set".equalsIgnoreCase(name)) {
+                processSet(line.toString(), trimLine.substring(".set".length()).trim());
             } else {
                 processLine(line);
             }
@@ -156,7 +156,7 @@ public class Parser {
         } else if ("endproc".equals(secondToken)) {
             currentProcedure = null;
         } else if ("args".equals(secondToken)) {
-            loadProcArgs(line);
+            loadProcedureArgs(line);
         } else if ("def".equalsIgnoreCase(secondToken)) {
             def(line);
         }
@@ -316,8 +316,7 @@ public class Parser {
         if (block.type != Block.TYPE_LOOP) {
             error(".loop not found");
         }
-        output.appendCommand(line.getIndent(), "dec", block.reg).
-                append("\t\t; ").append(block.args.get(0));
+        output.appendCommand(line, "dec", block.reg).append("\t\t; ").append(block.args.get(0));
         output.appendCommand(line, "brne", block.label);
     }
 
@@ -408,6 +407,23 @@ public class Parser {
         }
     }
 
+    private void processSet(String line, String args) throws SyntaxException {
+        String split[] = args.split("=");
+        if (split.length > 2) {
+            error("wrong expression");
+        }
+        String name = split[0].trim();
+        Constant c = new Constant(name, null, Constant.Type.EQU);
+        if (currentProcedure != null) {
+            currentProcedure.consts.put(name, c);
+        } else {
+            constants.put(name, c);
+        }
+        if (!gcc) {
+            output.add(line);
+        }
+    }
+
 
     private void processDefine(TokenString line) {
         line.removeEmptyTokens();
@@ -422,7 +438,7 @@ public class Parser {
     }
 
 
-    private void loadProcArgs(TokenString line) throws SyntaxException {
+    private void loadProcedureArgs(TokenString line) throws SyntaxException {
         if (currentProcedure == null) {
             error(".args can be defined in .proc block only");
         }
@@ -515,7 +531,6 @@ public class Parser {
             }
             globalAliases.put(aliasName, alias);
         }
-
     }
 
     private Alias createAlias(String name, String reg) throws SyntaxException {

@@ -97,6 +97,9 @@ class ExpressionsCompiler {
                 } else if (dest.isVar()) {
                     expr.removeFirst(2);
                     moveToVar(src, dest, expr, out);
+                } else if (dest.isArray()) {
+                    expr.removeFirst(2);
+                    moveToArray(src, dest, expr, out);
                 } else {
                     unexpectedExpressionError();
                 }
@@ -160,6 +163,13 @@ class ExpressionsCompiler {
                     unexpectedExpressionError();
                 }
                 return true;
+            case ".":
+                if (dest.getType() == Token.TYPE_ARRAY_IO) {
+                    setBitInPort(src, dest, expr, out);
+                } else {
+                    unsupportedOperationError();
+                }
+                return true;
             default:
                 unsupportedOperationError(operation);
         }
@@ -217,45 +227,13 @@ class ExpressionsCompiler {
             // x = abc
             // x = var
             if (firstArg.isOperator("-") && expr.size() > 1) {    // x = -y
-                Token secondArg = expr.get(1);
-                // x = -y
-                if (secondArg.isRegister()) {
-                    if (dest.equals(secondArg)) {
-                        out.appendCommand(src, "neg", dest);
-                    } else {
-                        out.appendCommand(src, "mov", dest, secondArg);
-                        out.appendCommand(src, "neg", dest);
-                    }
-                } else {
-                    // x = -123
-                    if (!secondArg.isAnyConst()) {
-                        unexpectedExpressionError(secondArg);
-                    }
-                    Token s = secondArg.isConst() ? resolveConst(secondArg) : secondArg;
-                    out.appendCommand(src, "ldi", dest, s.getNegativeExpr());
-                }
-                expr.removeFirst();
+                moveNegative(src, dest, expr, out);
             } else {    // x = const | var | expression
                 if (firstArg.isNumber() && firstArg.getNumberValue() == 0) {
                     out.appendCommand(src, "clr", dest);
                     return;
                 } else {
-                    if (firstArg.isVar()) {
-                        int size = getVarSize(firstArg);
-                        if (size == 1) {
-                            out.appendCommand(src, "lds", dest, firstArg);
-                        } else {
-                            unsupportedOperationError();
-                        }
-                    } else {
-                        if (firstArg.isConst()) {
-                            out.appendCommand(src, "ldi", dest, resolveConst(firstArg));
-                        } else if (firstArg.isAnyConst()) {
-                            out.appendCommand(src, "ldi", dest, firstArg);
-                        } else {
-                            unexpectedExpressionError(firstArg);
-                        }
-                    }
+                    moveValueToReg(src, dest, firstArg, out);
                 }
             }
         }
@@ -263,8 +241,6 @@ class ExpressionsCompiler {
             return;
         }
         expr.removeFirst();
-
-
         if (expr.size() % 2 != 0) {
             unexpectedExpressionError();
         }
@@ -272,55 +248,100 @@ class ExpressionsCompiler {
         for (int i = 0; i < expr.size()/2; i++) {
             Token operation = expr.get(i*2);
             Token arg = expr.get(i*2+1);
-            switch (operation.asString()) {
-                case "+":
-                    if (arg.isAnyConst()) {
-                        if (arg.isNumber() && arg.getNumberValue() == 1) {
-                            out.appendCommand(src, "inc", dest);
-                        } else {
-                            out.appendCommand(src, "subi", dest, arg.getNegativeExpr());
-                        }
-                    } else if (arg.isRegister()) {
-                        out.appendCommand(src, "add", dest, arg);
-                    } else {
-                        wrongArgumentError(arg);
-                    }
-                    break;
-                case "-":
-                    if (arg.isAnyConst()) {
-                        if (arg.isNumber() && arg.getNumberValue() == 1) {
-                            out.appendCommand(src, "dec", dest);
-                        } else {
-                            out.appendCommand(src, "subi", dest, arg.wrapToBrackets());
-                        }
-                    } else if (arg.isRegister()) {
-                        out.appendCommand(src, "sub", dest, arg);
-                    } else {
-                        wrongArgumentError(arg);
-                    }
-                    break;
-                case "&":
-                    if (arg.isAnyConst()) {
-                        out.appendCommand(src, "andi", dest, arg.wrapToBrackets());
-                    } else if (arg.isRegister()) {
-                        out.appendCommand(src, "and", dest, arg);
-                    } else {
-                        wrongArgumentError(arg);
-                    }
-                    break;
-                case "|":
-                    if (arg.isAnyConst()) {
-                        out.appendCommand(src, "ori", dest, arg.wrapToBrackets());
-                    } else if (arg.isRegister()) {
-                        out.appendCommand(src, "or", dest, arg);
-                    } else {
-                        wrongArgumentError(arg);
-                    }
-                    break;
-                default:
-                    unsupportedOperationError(operation);
+            compileOperation(src, dest, arg, operation.asString(), out);
+        }
+    }
 
+    private void compileOperation(TokenString src, Token dest, Token arg, String operation, OutputFile out) throws CompileException {
+        switch (operation) {
+            case "+":
+                if (arg.isAnyConst()) {
+                    if (arg.isNumber() && arg.getNumberValue() == 1) {
+                        out.appendCommand(src, "inc", dest);
+                    } else {
+                        out.appendCommand(src, "subi", dest, arg.getNegativeExpr());
+                    }
+                } else if (arg.isRegister()) {
+                    out.appendCommand(src, "add", dest, arg);
+                } else {
+                    wrongArgumentError(arg);
+                }
+                break;
+            case "-":
+                if (arg.isAnyConst()) {
+                    if (arg.isNumber() && arg.getNumberValue() == 1) {
+                        out.appendCommand(src, "dec", dest);
+                    } else {
+                        out.appendCommand(src, "subi", dest, arg.wrapToBrackets());
+                    }
+                } else if (arg.isRegister()) {
+                    out.appendCommand(src, "sub", dest, arg);
+                } else {
+                    wrongArgumentError(arg);
+                }
+                break;
+            case "&":
+                if (arg.isAnyConst()) {
+                    out.appendCommand(src, "andi", dest, arg.wrapToBrackets());
+                } else if (arg.isRegister()) {
+                    out.appendCommand(src, "and", dest, arg);
+                } else {
+                    wrongArgumentError(arg);
+                }
+                break;
+            case "|":
+                if (arg.isAnyConst()) {
+                    out.appendCommand(src, "ori", dest, arg.wrapToBrackets());
+                } else if (arg.isRegister()) {
+                    out.appendCommand(src, "or", dest, arg);
+                } else {
+                    wrongArgumentError(arg);
+                }
+                break;
+            default:
+                unsupportedOperationError(operation);
+        }
+    }
+
+
+    private void moveNegative(TokenString src, Token dest, Expression expr, OutputFile out) throws CompileException {
+        Token secondArg = expr.get(1);
+        // x = -y
+        if (secondArg.isRegister()) {
+            if (dest.equals(secondArg)) {
+                out.appendCommand(src, "neg", dest);
+            } else {
+                out.appendCommand(src, "mov", dest, secondArg);
+                out.appendCommand(src, "neg", dest);
             }
+        } else {
+            // x = -123
+            if (!secondArg.isAnyConst()) {
+                unexpectedExpressionError(secondArg);
+            }
+            Token s = secondArg.isConst() ? resolveConst(secondArg) : secondArg;
+            out.appendCommand(src, "ldi", dest, s.getNegativeExpr());
+        }
+        expr.removeFirst();
+    }
+
+
+    private void moveValueToReg(TokenString src, Token destReg, Token arg, OutputFile out) throws CompileException {
+        if (arg.isVar()) {
+            int size = getVarSize(arg);
+            if (size == 1) {
+                out.appendCommand(src, "lds", destReg, arg);
+            } else {
+                unsupportedOperationError();
+            }
+        } else if (arg.isConst()) {
+            out.appendCommand(src, "ldi", destReg, resolveConst(arg));
+        } else if (arg.isAnyConst()) {
+            out.appendCommand(src, "ldi", destReg, arg);
+        } else if (arg.isArray()) {
+            moveFromArray(src, destReg, arg, out);
+        } else {
+            unexpectedExpressionError(arg);
         }
     }
 
@@ -440,6 +461,102 @@ class ExpressionsCompiler {
             unsupportedOperationError(expr);
         }
     }
+
+    private void moveFromArray(TokenString src, Token destReg, Token array, OutputFile out) throws CompileException {
+        Token.ArrayIndex index = array.getIndex();
+        switch (array.getType()) {
+            case Token.TYPE_ARRAY_IO:
+                if (!index.hasModifier() && !index.isPair()) {
+                    out.appendCommand(src, "in", destReg, arrayIndexToPort(index));
+                } else {
+                    wrongArrayIndex("io");
+                }
+                break;
+            case Token.TYPE_ARRAY_PRG:
+                if (!"Z".equals(index.getName())) {
+                    wrongArrayIndex("prg");
+                }
+                if (!index.hasModifier()) {
+                    if (destReg.isRegister("r0")) {
+                        out.appendCommand(src, "lpm");
+                    } else {
+                        out.appendCommand(src, "lpm", destReg, index.getName());
+                    }
+                } else if (index.isPostInc()) {
+                    out.appendCommand(src, "lpm", destReg, index.getName() + "+");
+                } else {
+                    wrongArrayIndex("prg");
+                }
+                break;
+            case Token.TYPE_ARRAY_RAM:
+                if (!index.isPair() || index.isPreInc() || index.isPostDec()) {
+                    unsupportedOperationError();
+                }
+                out.appendCommand(src, "ld", destReg, arrayPairIndexValue(index));
+                break;
+            default:
+                unsupportedOperationError();
+        }
+    }
+
+    private void moveToArray(TokenString src, Token dest, Expression expr, OutputFile out) throws CompileException {
+        if (expr.size() != 1) {
+            unsupportedOperationError();
+        }
+        Token arg = expr.getFirst();
+        Token.ArrayIndex index = dest.getIndex();
+        if (!arg.isRegister()) {
+            unsupportedOperationError();
+        }
+        switch (dest.getType()) {
+            case Token.TYPE_ARRAY_IO:
+                if (index.hasModifier() || index.isPair()) {
+                    unsupportedOperationError();
+                }
+                out.appendCommand(src, "out", arrayIndexToPort(index), arg.asString());
+                break;
+            case Token.TYPE_ARRAY_PRG:
+                unsupportedOperationError("can't write to prg[]");
+                break;
+            case Token.TYPE_ARRAY_RAM:
+                 if (!index.isPair() || index.isPreInc() || index.isPostDec()) {
+                     wrongArrayIndex("ram");
+                 }
+                out.appendCommand(src, "st", arrayPairIndexValue(index), arg.asString());
+                break;
+            default:
+                unsupportedOperationError();
+        }
+    }
+
+    private void setBitInPort(TokenString src, Token array, Expression expr, OutputFile out) throws CompileException {
+        if (expr.size() != 5) {
+            unsupportedOperationError();
+        }
+        Token bitToken = expr.get(2);
+        Token assign = expr.get(3);
+        Token val = expr.get(4);
+        Token.ArrayIndex index = array.getIndex();
+        if (!assign.isOperator("=") || !val.isNumber() || index.hasModifier() || index.isPair()) {
+            unsupportedOperationError();
+        }
+        if (bitToken.isNumber()) {
+            int bit = bitToken.getNumberValue();
+            if (bit < 0 || bit > 7) {
+                unsupportedOperationError("wrong bit number");
+            }
+        } else if (!bitToken.isAnyConst()) {
+            unsupportedOperationError("bit number expected after dot");
+        }
+        if (val.getNumberValue() == 1) {
+            out.appendCommand(src, "sbi", arrayIndexToPort(index), bitToken.asString());
+        } else if (val.getNumberValue() == 0) {
+            out.appendCommand(src, "cbi", arrayIndexToPort(index), bitToken.asString());
+        } else {
+            unsupportedOperationError("1 or 0 expected");
+        }
+    }
+
 
 
     private static String hexByteStr(int val) {
@@ -675,6 +792,25 @@ class ExpressionsCompiler {
         return var != null ? var.type : null;
     }
 
+    private static String arrayPairIndexValue(Token.ArrayIndex index) {
+        String name = index.getName();
+        if (index.isPreDec()) {
+            return "-" + name;
+        } else if (index.isPreInc()) {
+            return "+" + name;
+        } else if (index.isPostDec()) {
+            return name + "-";
+        } else if (index.isPostInc()) {
+            return name + "+";
+        } else {
+            return name;
+        }
+    }
+
+    private String arrayIndexToPort(Token.ArrayIndex index) {
+        return parser.gcc ? "_SFR_IO_ADDR(" + index.getName() + ")" : index.getName();
+    }
+
 
     private boolean isConstExpression(String s) {
         return parser.isConstExpression(s);
@@ -718,6 +854,10 @@ class ExpressionsCompiler {
 
     private static void sizesMismatchError() throws CompileException {
         unsupportedOperationError("sizes mismatch");
+    }
+
+    private static void wrongArrayIndex(String arrayName) throws CompileException {
+        unsupportedOperationError("wrong " + arrayName + "[] index");
     }
 
 

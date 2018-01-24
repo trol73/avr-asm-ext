@@ -39,24 +39,33 @@ public class Token {
      */
     public static final int TYPE_CONST_EXPRESSION = 8;
     /**
-     * $prg / $io / $mem array
-     */
-    public static final int TYPE_SYS_ARRAY = 9;
-    /**
      * Keyword, etc. "if" or "goto"
      */
-    public static final int TYPE_KEYWORD = 10;
+    public static final int TYPE_KEYWORD = 9;
+    /**
+     * Array item (ram[X], ram[Y++] etc.)
+     */
+    public static final int TYPE_ARRAY_RAM = 10;
+    /**
+     * Array item (prg[X], prg[Y++] etc.)
+     */
+    public static final int TYPE_ARRAY_PRG = 11;
+    /**
+     * Array item (io[X], io[Y++] etc.)
+     */
+    public static final int TYPE_ARRAY_IO = 12;
+
 
 
     private final int type;
     private final String[] strings;
 
-    public Token(int type, String s) {
+    Token(int type, String s) {
         this.type = type;
         this.strings = new String[] {s};
     }
 
-    public Token(int type, String[] strings) {
+    Token(int type, String[] strings) {
         this.type = type;
         this.strings = strings;
     }
@@ -87,6 +96,23 @@ public class Token {
                     sb.append(s).append('.');
                 }
                 sb.delete(sb.length()-1, sb.length());
+                return sb.toString();
+            case TYPE_ARRAY_RAM:
+            case TYPE_ARRAY_PRG:
+            case TYPE_ARRAY_IO:
+                sb = new StringBuilder();
+                if (type == TYPE_ARRAY_IO) {
+                    sb.append("io[");
+                } else if (type == TYPE_ARRAY_RAM) {
+                    sb.append("ram[");
+                } else {
+                    sb.append("prg[");
+                }
+                sb.append(strings[0]);
+                if (strings.length == 2) {
+                    sb.append(strings[1]);
+                }
+                sb.append("]");
                 return sb.toString();
         }
         return strings[0];
@@ -126,6 +152,10 @@ public class Token {
 
     public boolean isAnyConst() {
         return type == TYPE_NUMBER || type == TYPE_CONST || type == TYPE_CONST_EXPRESSION;
+    }
+
+    public boolean isArray() {
+        return type == TYPE_ARRAY_RAM || type == TYPE_ARRAY_IO || type == TYPE_ARRAY_PRG;
     }
 
     public boolean isOperator(String operator) {
@@ -281,6 +311,13 @@ public class Token {
         throw new RuntimeException("internal error");
     }
 
+    public ArrayIndex getIndex() {
+        if (!isArray()) {
+            throw new RuntimeException();
+        }
+        return new ArrayIndex();
+    }
+
     @Override
     public boolean equals(Object obj) {
         if (!(obj instanceof Token)) {
@@ -316,5 +353,36 @@ public class Token {
         }
     }
 
-    // $mem / $io / $prg array
+    public class ArrayIndex {
+        public boolean isPair() {
+            return ParserUtils.isPair(getName());
+        }
+
+        public String getName() {
+            if (strings.length == 1) {
+                return strings[0];
+            }
+            return "--".equals(strings[0]) || "++".equals(strings[0]) ? strings[1] : strings[0];
+        }
+
+        public boolean isPreInc() {
+            return "++".equals(strings[0]);
+        }
+
+        public boolean isPreDec() {
+            return "--".equals(strings[0]);
+        }
+
+        public boolean isPostInc() {
+            return strings.length == 2 && "++".equals(strings[1]);
+        }
+
+        public boolean isPostDec() {
+            return strings.length == 2 && "--".equals(strings[1]);
+        }
+
+        public boolean hasModifier() {
+            return strings.length == 2;
+        }
+    }
 }

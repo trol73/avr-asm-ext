@@ -3,7 +3,7 @@ package ru.trolsoft.asmext.data;
 public class Constant {
 
     public enum Type {
-        EQU, DEFINE;
+        EQU, DEFINE
     }
     public final String name;
     public final String value;

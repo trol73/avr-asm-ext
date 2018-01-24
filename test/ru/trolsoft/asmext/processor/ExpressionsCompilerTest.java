@@ -31,8 +31,45 @@ class ExpressionsCompilerTest {
         assertEquals(outVal, out.toString().trim());
     }
 
+//    private void test(ExpressionsCompiler ec, String s, String outVal) throws CompileException {
+//        OutputFile out = new OutputFile();
+//        TokenString tokenString = new TokenString(s);
+//        ec.compile(tokenString, ec.parser.buildExpression(tokenString), out);
+//        assertEquals(outVal, out.toString().trim());
+//    }
+
+    private void test(String s, String outVal) throws CompileException {
+        Parser parser = new Parser();
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+        OutputFile out = new OutputFile();
+
+        TokenString tokenString = new TokenString(s);
+        ec.compile(tokenString, ec.parser.buildExpression(tokenString), out);
+        assertEquals(outVal, out.toString().trim());
+    }
+
     private boolean compile(ExpressionsCompiler ec, TokenString src) throws CompileException {
         return ec.compile(src, new Expression(src), new OutputFile());
+    }
+
+    private boolean hasError(String s) {
+        Parser parser = new Parser();
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+        try {
+            compile(ec, new TokenString(s));
+            return false;
+        } catch (CompileException e) {
+            return true;
+        }
+    }
+
+    private boolean hasError(ExpressionsCompiler ec, String s) {
+        try {
+            compile(ec, new TokenString(s));
+            return false;
+        } catch (CompileException e) {
+            return true;
+        }
     }
 
     @Test
@@ -166,91 +203,16 @@ class ExpressionsCompilerTest {
 
     @Test
     void testErrors() {
-        Parser parser = new Parser();
-        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
-        OutputFile out = new OutputFile();
-        boolean error;
-
-        try {
-            compile(ec, ta("r0", "=", "undefined"));
-            error = false;
-        } catch (CompileException e) {
-            error = true;
-        }
-        assertTrue(error);
-
-        try {
-            parser.parseLine("r0.r1 = var_not_found");
-            error = false;
-        } catch (SyntaxException e) {
-            error = true;
-        }
-        assertTrue(error);
-
-        try {
-            parser.parseLine("r0 = -unknown_value");
-            error = false;
-        } catch (SyntaxException e) {
-            error = true;
-        }
-        assertTrue(error);
-
-        try {
-            parser.parseLine("r1 = r10 + unknown");
-            error = false;
-        } catch (SyntaxException e) {
-            error = true;
-        }
-        assertTrue(error);
-
-        try {
-            parser.parseLine("r1 = r10 - unknown");
-            error = false;
-        } catch (SyntaxException e) {
-            error = true;
-        }
-        assertTrue(error);
-
-        try {
-            parser.parseLine("r1 -= unknown");
-            error = false;
-        } catch (SyntaxException e) {
-            error = true;
-        }
-        assertTrue(error);
-
-        try {
-            parser.parseLine("r10 += unknown");
-            error = false;
-        } catch (SyntaxException e) {
-            error = true;
-        }
-        assertTrue(error);
-
-        parser = new Parser();
-        try {
-            parser.parseLine("unknown = r1");
-            error = false;
-        } catch (SyntaxException e) {
-            error = true;
-        }
-        assertTrue(error);
-
-        try {
-            parser.parseLine("Z += unknown");
-            error = false;
-        } catch (SyntaxException e) {
-            error = true;
-        }
-        assertTrue(error);
-
-        try {
-            parser.parseLine("r2.r1 -= ZH");
-            error = false;
-        } catch (SyntaxException e) {
-            error = true;
-        }
-        assertTrue(error);
+        assertTrue(hasError("r0=undefined"));
+        assertTrue(hasError("r0.r1 = var_not_found"));
+        assertTrue(hasError("r0 = -unknown_value"));
+        assertTrue(hasError("r1 = r10 + unknown"));
+        assertTrue(hasError("r1 = r10 - unknown"));
+        assertTrue(hasError("r1 -= unknown"));
+        assertTrue(hasError("r10 += unknown"));
+        assertTrue(hasError("unknown = r1"));
+        assertTrue(hasError("Z += unknown"));
+        assertTrue(hasError("r2.r1 -= ZH"));
     }
 
 
@@ -321,24 +283,35 @@ class ExpressionsCompilerTest {
 
         test(ec, ta("var_b", "=", "r16", "=", "var_b", "-", "1"), "lds\tr16, var_b\ndec\tr16\nsts\tvar_b, r16");
 
-        boolean error;
-        try {
-            test(ec, ta("=", "r21", "=", "100"), "ldi\tr21, 100\nsts\tvar_b, r21");
-            error = false;
-        } catch (CompileException e) {
-            error = true;
-            assertEquals("unexpected expression", e.getMessage());
-        }
-        assertTrue(error);
+//        boolean error;
+//        try {
+//            test(ec, ta("=", "r21", "=", "100"), "ldi\tr21, 100\nsts\tvar_b, r21");
+//            error = false;
+//        } catch (CompileException e) {
+//            error = true;
+//            assertEquals("unexpected expression", e.getMessage());
+//        }
+//        assertTrue(error);
+//
+//        try {
+//            test(ec, ta("var_b", "=", "r21", "="), "ldi\tr21, 100\nsts\tvar_b, r21");
+//            error = false;
+//        } catch (CompileException e) {
+//            error = true;
+//            assertEquals("empty expression", e.getMessage());
+//        }
+//        assertTrue(error);
+    }
 
-        try {
-            test(ec, ta("var_b", "=", "r21", "="), "ldi\tr21, 100\nsts\tvar_b, r21");
-            error = false;
-        } catch (CompileException e) {
-            error = true;
-            assertEquals("empty expression", e.getMessage());
-        }
-        assertTrue(error);
+    @Test
+    void testMultipleMoveError() throws SyntaxException {
+        assertTrue(hasError("=r21=100"));
+        Parser parser = new Parser();
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+
+        parser.parseLine(".extern var_b : byte");
+
+        assertTrue(hasError(ec, "var_b=r21="));
     }
 
 
@@ -359,5 +332,106 @@ class ExpressionsCompilerTest {
         test(ec, ta("r1", ".", "r2", ">>=", "2"), "lsr\tr2\nror\tr1\nlsr\tr2\nror\tr1");
     }
 
+    @Test
+    void testArrayPortsRead() throws CompileException {
+        test("r0 = io[PINC]", "in\tr0, PINC");
+    }
+
+    @Test
+    void testArrayPortsWrite() throws CompileException {
+        test("io[PORTC] = r0", "out\tPORTC, r0");
+    }
+
+    @Test
+    void testArrayPortsErrors() {
+        assertTrue(hasError("r0 = io[Z]"));
+        assertTrue(hasError("r0 = io[PORTC++]"));
+        assertTrue(hasError("r0 = io[--PORTC]"));
+        assertTrue(hasError("1 = io[--PORTC]"));
+        assertTrue(hasError("io[Z] = r0"));
+        assertTrue(hasError("io[Z++] = r0"));
+        assertTrue(hasError("io[--Z] = r0"));
+        assertTrue(hasError("io[PORTC] = 1"));
+    }
+
+    @Test
+    void testArrayMemRead() throws CompileException {
+        test("r16 = ram[Z]", "ld\tr16, Z");
+        test("r16 = ram[X]", "ld\tr16, X");
+        test("r0 = ram[Z++]", "ld\tr0, Z+");
+        test("r10 = ram[X++]", "ld\tr10, X+");
+        test("r20 = ram[Y++]", "ld\tr20, Y+");
+    }
+
+    @Test
+    void testArrayMemWrite() throws CompileException {
+        test("ram[X] = r0", "st\tX, r0");
+        test("ram[Y] = r0", "st\tY, r0");
+        test("ram[Z] = r0", "st\tZ, r0");
+        test("ram[X++] = r0", "st\tX+, r0");
+        test("ram[Y++] = r0", "st\tY+, r0");
+        test("ram[Z++] = r0", "st\tZ+, r0");
+        test("ram[--X] = r0", "st\t-X, r0");
+        test("ram[--Y] = r0", "st\t-Y, r0");
+        test("ram[--Z] = r0", "st\t-Z, r0");
+    }
+
+    @Test
+    void testArrayMemErrors() {
+        assertTrue(hasError("r0 = ram[12]"));
+        assertTrue(hasError("r10 = ram[++X]"));
+        assertTrue(hasError("r20 = ram[++Y]"));
+        assertTrue(hasError("r0 = ram[++Z]"));
+        assertTrue(hasError("r10 = ram[Z--]"));
+        assertTrue(hasError("r20 = ram[Y--]"));
+        assertTrue(hasError("ram[++X] = r0"));
+        assertTrue(hasError("ram[++Y] = r0"));
+        assertTrue(hasError("ram[++Z] = r0"));
+        assertTrue(hasError("ram[X--] = r0"));
+        assertTrue(hasError("ram[Y--] = r0"));
+        assertTrue(hasError("ram[Z--] = r0"));
+        assertTrue(hasError("ram[Z] = 1"));
+        assertTrue(hasError("ram[Z] = X"));
+    }
+
+    @Test
+    void testArrayPrgRead() throws CompileException {
+        test("r0 = prg[Z]", "lpm");
+        test("r10 = prg[Z]", "lpm\tr10, Z");
+        test("r20 = prg[Z++]", "lpm\tr20, Z+");
+    }
+
+    @Test
+    void testArrayPrgErrors() {
+        assertTrue(hasError("r0 = prg[1]"));
+        assertTrue(hasError("r0 = prg[X]"));
+        assertTrue(hasError("r0 = prg[Y]"));
+        assertTrue(hasError("r0 = prg[X++]"));
+        assertTrue(hasError("r0 = prg[Y++]"));
+        assertTrue(hasError("r0 = prg[X--]"));
+        assertTrue(hasError("r0 = prg[Y--]"));
+        assertTrue(hasError("r0 = prg[--X]"));
+        assertTrue(hasError("r0 = prg[--Y]"));
+        assertTrue(hasError("r0 = prg[Z--]"));
+        assertTrue(hasError("r0 = prg[--Z]"));
+        assertTrue(hasError("r0 = prg[++Z]"));
+        assertTrue(hasError("prg[Z] = r0"));
+    }
+
+
+    @Test
+    void testArrayPortBits() throws CompileException {
+        test("io[PORTA].0 = 1", "sbi\tPORTA, 0");
+        test("io[DDRC].5 = 0", "cbi\tDDRC, 5");
+    }
+
+    @Test
+    void testArrayPortBitErrors() {
+        assertTrue(hasError("io[PORTC].1 = 2"));
+        assertTrue(hasError("io[PORTC].10 = 0"));
+        assertTrue(hasError("io[X].1 = 0"));
+        assertTrue(hasError("io[PORTC++].1 = 0"));
+//        assertTrue(hasError("io[--PORTC].1 = 0"));
+    }
 
 }
