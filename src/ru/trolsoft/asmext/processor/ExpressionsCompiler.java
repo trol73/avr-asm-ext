@@ -545,7 +545,7 @@ class ExpressionsCompiler {
             if (bit < 0 || bit > 7) {
                 unsupportedOperationError("wrong bit number");
             }
-        } else if (!bitToken.isAnyConst()) {
+        } else if (!(bitToken.isAnyConst() || bitToken.getType() == Token.TYPE_OTHER)) {
             unsupportedOperationError("bit number expected after dot");
         }
         if (val.getNumberValue() == 1) {

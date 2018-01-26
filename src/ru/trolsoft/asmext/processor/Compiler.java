@@ -124,10 +124,10 @@ class Compiler {
 
         for (Argument arg : args) {
             String argName = arg.name;
-            String regName = procedure.args.get(argName).register;
+            Token argRegs = procedure.args.get(argName).register;
             Expression value = arg.expr;
-            if (value.size() != 1 || !value.getFirst().isRegister(regName)) {
-                addArgumentAssign(out, argName, regName, value);
+            if (value.size() != 1 || !value.getFirst().equals(argRegs)) {
+                addArgumentAssign(out, argRegs, value);
             } else {
                 out.startNewLine().append(src.getIndent()).append("; ").append(argName).append(" = ").append(value);
             }
@@ -135,8 +135,9 @@ class Compiler {
         out.appendCommand(src, src.getFirstToken(), procedure.name);
     }
 
-    private void addArgumentAssign(OutputFile out, String argName, String regName, Expression value) throws SyntaxException {
-        value.add(0, new Token(Token.TYPE_REGISTER, regName));
+    private void addArgumentAssign(OutputFile out, Token arg, Expression value) throws SyntaxException {
+        //value.add(0, new Token(Token.TYPE_REGISTER, regName));
+        value.add(0, arg);
         value.add(1, new Token(Token.TYPE_OPERATOR, "="));
 
         try {

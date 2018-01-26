@@ -1,10 +1,12 @@
 package ru.trolsoft.asmext.data;
 
+import ru.trolsoft.asmext.processor.Token;
+
 public class Alias {
     public final String name;
-    public final String register;
+    public final Token register;
 
-    public Alias(String name, String register) {
+    public Alias(String name, Token register) {
         this.name = name;
         this.register = register;
     }

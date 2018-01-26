@@ -112,15 +112,17 @@ public class Expression implements Iterable<Token> {
             t = new Token(Token.TYPE_OTHER, tokens.get(i - cnt + 1));
             list.add(t);
         } else {
-            String[] regs = new String[cnt / 2 - 1];
+            String[] regs = new String[cnt / 2];
             int index = 0;
             for (int j = i - cnt; j < i; j += 2) {
+                if (index >= regs.length) {
+                    break;
+                }
                 regs[index++] = tokens.get(j);
             }
             Token group = new Token(Token.TYPE_REGISTER_GROUP, regs);
             list.add(group);
-            Token t = new Token(Token.TYPE_OTHER, tokens.get(i - 1));
-            list.add(t);
+            return i - 1;
         }
         return i;
     }

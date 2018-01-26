@@ -91,8 +91,8 @@ class CompilerTest {
         compiler = new ru.trolsoft.asmext.processor.Compiler(parser);
 
         Procedure proc = new Procedure("my_proc");
-        proc.addArg(new Alias("x", "r24"));
-        proc.addArg(new Alias("y", "r22"));
+        proc.addArg(new Alias("x", new Token(Token.TYPE_REGISTER, "r24")));
+        proc.addArg(new Alias("y", new Token(Token.TYPE_REGISTER, "r22")));
         parser.procedures.put(proc.name, proc);
 
         testLine("rcall my_proc (x: 1, y: r0) // comment", "ldi\tr24, 1\nmov\tr22, r0\nrcall\tmy_proc\t\t// comment");
@@ -105,7 +105,7 @@ class CompilerTest {
 
         proc = new Procedure("my_proc");
         parser.procedures.clear();
-        proc.addArg(new Alias("x", "r24"));
+        proc.addArg(new Alias("x", new Token(Token.TYPE_REGISTER, "r24")));
         parser.procedures.put(proc.name, proc);
         testLine("rcall my_proc (10) // comment", "ldi\tr24, 10\nrcall\tmy_proc\t\t// comment");
         testLine("rcall my_proc (xl)", "mov\tr24, xl\nrcall\tmy_proc");

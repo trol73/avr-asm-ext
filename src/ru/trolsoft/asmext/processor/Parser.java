@@ -182,7 +182,7 @@ public class Parser {
             String nextToken = i < line.size()-1 ? line.getToken(i+1) : null;
             Alias alias = ":".equals(nextToken) ? null : resolveProcAlias(token);
             if (alias != null) {
-                line.modifyToken(i, alias.register);
+                line.modifyToken(i, alias.register.toString());
             } else if (token.startsWith("@") && currentProcedure != null) {
                 line.modifyToken(i, resolveLocalLabel(token.substring(1)));
             }
@@ -264,14 +264,14 @@ public class Parser {
         block.label += "__" + block.args.get(0) + "_" + lineNumber;
         String reg = block.args.get(0);
         if (currentProcedure != null) {
-            String resolve = currentProcedure.resolveVariable(reg);
+            Token resolve = currentProcedure.resolveVariable(reg);
             if (resolve != null) {
-                reg = resolve;
+                reg = resolve.toString();
             }
         }
         Alias alias = resolveProcAlias(reg);
         if (alias != null) {
-            reg = alias.register;
+            reg = alias.register.toString();
         }
         if (!ParserUtils.isRegister(reg)) {
             error("register or alias expected: " + reg);
@@ -283,9 +283,9 @@ public class Parser {
             }
             String val = block.args.get(2);
             if (currentProcedure != null) {
-                String resolve = currentProcedure.resolveVariable(val);
+                Token resolve = currentProcedure.resolveVariable(val);
                 if (resolve != null) {
-                    val = resolve;
+                    val = resolve.toString();
                 }
             }
             // TODO it's compiler code !!!
@@ -323,6 +323,8 @@ public class Parser {
 
     private void processExtern(TokenString line, String args) throws SyntaxException {
         // check procedure
+        // .extern drawCharXY (x:r24, y:r22, char:r20)
+        // TODO !!!! TS -> EXPR
         int index = args.indexOf('(');
         if (index > 0) {
             String procArgs = args.substring(index);
@@ -343,9 +345,9 @@ public class Parser {
                 String name = nv[0].trim();
                 String reg = nv[1].trim();
                 if (globalAliases.containsKey(reg)) {
-                    reg = globalAliases.get(reg).register;
+                    reg = globalAliases.get(reg).register.toString();
                 }
-                Alias alias = createAlias(name, reg);
+                Alias alias = createAlias(name, new Token(Token.TYPE_REGISTER, reg));
                 if (proc.hasArg(name)) {
                     error("duplicate argument '" + name + "'");
                 }
@@ -439,10 +441,42 @@ public class Parser {
 
 
     private void loadProcedureArgs(TokenString line) throws SyntaxException {
+// TODO executed twice - on preload and load !!!
         if (currentProcedure == null) {
             error(".args can be defined in .proc block only");
         }
-        // TODO executed twice - on preload and load !!!
+        replaceGlobalAliases(line);
+        Expression expr = new Expression(line);
+//System.out.println(expr);
+        for (int i = 2; i < expr.size(); ) {
+            String name = line.getToken(i++);
+            if (i >= expr.size()-1 || !expr.get(i++).isOperator("(")) {
+                error("wrong argument: " + name);
+            }
+            Token reg = expr.get(i++);
+            if (i >= line.size() || !expr.get(i++).isOperator(")")) {
+                error("wrong argument: " + name);
+            }
+            if (!reg.isRegister() && !reg.isPair() && !reg.isRegGroup()) {
+                String regStr = reg.toString();
+                if (globalAliases.containsKey(regStr)) {
+                    reg = globalAliases.get(regStr).register;
+                }
+            }
+            Alias alias = createAlias(name, reg);
+            if (currentProcedure.hasAlias(name)) {
+                error("alias '" + name + "' already defined for this procedure");
+            }
+            if (currentProcedure.hasArg(name)) {
+                error("argument '" + name + "' already defined for this procedure");
+            }
+            currentProcedure.addArg(alias);
+            if (i < expr.size() && !expr.get(i++).isOperator(",")) {
+                error("wrong argument, comma expected after " + name);
+            }
+        }
+
+/*
         line.removeEmptyTokens();
         for (int i = 2; i < line.size(); ) {
             String name = line.getToken(i++);
@@ -468,11 +502,50 @@ public class Parser {
                 error("wrong argument, comma expected after " + name);
             }
         }
+*/
         output.add(";" + line);
     }
 
 
     private void use(TokenString str) throws SyntaxException {
+        replaceGlobalAliases(str);
+        Expression expr = new Expression(str);
+        int index = 2;
+        while (index < expr.size()) {
+            if (index + 2 >= expr.size()) {
+                error("wrong .use syntax ");
+            }
+            Token aliasRegs = expr.get(index++);
+            Token as = expr.get(index++);
+            String aliasName = expr.get(index++).toString();
+            if (!as.toString().equals("as")) {
+                error("wrong .use syntax ");
+            }
+            if (index < expr.size()) {
+                if (!expr.get(index++).isOperator(",")) {
+                    error("wrong .use syntax ");
+                }
+            }
+            checkName(aliasName);
+            Alias alias = createAlias(aliasName, aliasRegs);
+            if (currentProcedure != null) {
+                if (currentProcedure.hasAlias(aliasName)) {
+                    error("alias '" + aliasName + "' already defined for this procedure");
+                }
+                if (currentProcedure.hasArg(aliasName)) {
+                    error("argument '" + aliasName + "' already defined for this procedure");
+                }
+                currentProcedure.addAlias(alias);
+            } else {
+                if (globalAliases.containsKey(aliasName)) {
+                    error("global alias '" + aliasName + "' already defined");
+                }
+                globalAliases.put(aliasName, alias);
+            }
+        }
+        output.addComment(str);
+
+/*
         str.removeEmptyTokens();
         int index = 2;
         while (index < str.size()) {
@@ -507,6 +580,7 @@ public class Parser {
             }
         }
         output.addComment(str);
+*/
     }
 
     private void def(TokenString str) throws SyntaxException {
@@ -516,7 +590,7 @@ public class Parser {
         }
         String aliasName = str.getToken(2);
         String regName = str.getToken(4);
-        Alias alias = createAlias(aliasName, regName);
+        Alias alias = createAlias(aliasName, new Token(Token.TYPE_REGISTER, regName));
         if (currentProcedure != null) {
             if (currentProcedure.hasAlias(aliasName)) {
                 error("alias '" + aliasName + "' already defined for this procedure");
@@ -533,9 +607,11 @@ public class Parser {
         }
     }
 
-    private Alias createAlias(String name, String reg) throws SyntaxException {
+    private Alias createAlias(String name, Token reg) throws SyntaxException {
         checkName(name);
-        checkRegister(reg);
+        if (!reg.isRegister() && !reg.isPair() && !reg.isRegGroup() && !globalAliases.containsKey(reg.asString())) {
+            error("register, pair or group  expected: " + reg);
+        }
         return new Alias(name, reg);
     }
 
@@ -551,11 +627,6 @@ public class Parser {
         }
     }
 
-    private void checkRegister(String name) throws SyntaxException {
-        if (!ParserUtils.isRegister(name) && !globalAliases.containsKey(name)) {
-            error("register expected: " + name);
-        }
-    }
 
     private void error(String msg) throws SyntaxException {
         throw new SyntaxException(msg).line(lineNumber);
@@ -710,6 +781,16 @@ public class Parser {
                 break;
             }
         } // while
+    }
+
+    private void replaceGlobalAliases(TokenString str) {
+        for (int i = 0; i < str.size(); i++) {
+            String src = str.getToken(i);
+            Alias alias = globalAliases.get(src);
+            if (alias != null) {
+                str.modifyToken(i, alias.register.toString());
+            }
+        }
     }
 
     Expression buildExpression(TokenString src) {

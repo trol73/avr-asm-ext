@@ -64,8 +64,8 @@ class ParserTest {
 
         parser = new Parser();
         parser.currentProcedure = new Procedure("proc");
-        parser.currentProcedure.addArg(new Alias("arg", "r24"));
-        parser.currentProcedure.addAlias(new Alias("alias", "r22"));
+        parser.currentProcedure.addArg(new Alias("arg", new Token(Token.TYPE_REGISTER, "r24")));
+        parser.currentProcedure.addAlias(new Alias("alias", new Token(Token.TYPE_REGISTER, "r22")));
         test(a(
                 "push arg alias"
                 ), a (
@@ -82,7 +82,7 @@ class ParserTest {
     void testAliases() throws SyntaxException {
         Parser parser = new Parser();
         parser.currentProcedure = new Procedure("proc");
-        parser.currentProcedure.addAlias(new Alias("y", "r22"));
+        parser.currentProcedure.addAlias(new Alias("y", new Token(Token.TYPE_REGISTER, "r22")));
 
         parser.parseLine("ld r24, Y+");
         assertEquals(parser.getOutput().get(0), "ld r24, Y+");
@@ -182,9 +182,9 @@ class ParserTest {
 
         assertEquals(parser.procedures.get("fillCharXY").name, "fillCharXY");
         assertTrue(parser.procedures.get("fillCharXY").args.size() == 3);
-        assertEquals(parser.procedures.get("fillCharXY").args.get("x").register, "r24");
-        assertEquals(parser.procedures.get("fillCharXY").args.get("y").register, "r22");
-        assertEquals(parser.procedures.get("fillCharXY").args.get("char").register, "r20");
+        assertEquals("r24", parser.procedures.get("fillCharXY").args.get("x").register.asString());
+        assertEquals("r22", parser.procedures.get("fillCharXY").args.get("y").register.asString());
+        assertEquals("r20", parser.procedures.get("fillCharXY").args.get("char").register.asString());
 
         parser.parseLine(".extern cmd_color : word");
         assertTrue(parser.variables.size() == 1);
@@ -256,8 +256,10 @@ class ParserTest {
         assertTrue(parser.currentProcedure.args.size() == 2);
         assertTrue(parser.currentProcedure.args.containsKey("x"));
         assertTrue(parser.currentProcedure.args.containsKey("y"));
-        assertEquals("r24", parser.currentProcedure.args.get("x").register);
-        assertEquals("r22", parser.currentProcedure.args.get("y").register);
+        assertEquals("r24", parser.currentProcedure.args.get("x").register.asString());
+        assertEquals(Token.TYPE_REGISTER, parser.currentProcedure.args.get("x").register.getType());
+        assertEquals("r22", parser.currentProcedure.args.get("y").register.asString());
+        assertEquals(Token.TYPE_REGISTER, parser.currentProcedure.args.get("y").register.getType());
         parser.parseLine(".endproc ; my_proc");
         assertTrue(parser.currentProcedure == null);
 
@@ -364,7 +366,8 @@ class ParserTest {
         Parser parser = new Parser();
         parser.parseLine(".use r16 as rmp");
         assertTrue(parser.globalAliases.containsKey("rmp"));
-        assertEquals(parser.globalAliases.get("rmp").register, "r16");
+        assertEquals(parser.globalAliases.get("rmp").register.toString(), "r16");
+        assertEquals(parser.globalAliases.get("rmp").register.getType(), Token.TYPE_REGISTER);
         parser.parseLine("rmp = 0");
         assertTrue(parser.getOutput().getLastLine().contains("clr\tr16"));
         parser.parseLine("rmp = 'a'");
@@ -378,14 +381,14 @@ class ParserTest {
         parser.parseLine(".proc my_proc");
         parser.parseLine(".use r16 as x");
         assertTrue(parser.currentProcedure.uses.containsKey("x"));
-        assertEquals("r16", parser.currentProcedure.getAlias("x").register);
+        assertEquals("r16", parser.currentProcedure.getAlias("x").register.asString());
         parser.parseLine(".endproc");
 
         parser = new Parser();
         parser.gcc = false;
         parser.preloadLine(".DEF rmp = R16 ; comment");
         assertTrue(parser.globalAliases.containsKey("rmp"));
-        assertEquals(parser.globalAliases.get("rmp").register, "R16");
+        assertEquals("R16", parser.globalAliases.get("rmp").register.asString());
         parser.parseLine("rmp = 0x1B");
         assertTrue(parser.getOutput().getLastLine().contains("ldi\tR16, 0x1B"));
         parser.parseLine("rmp = ' '");
@@ -395,8 +398,8 @@ class ParserTest {
         parser.parseLine(".use r16 as x1, r17 as x2");
         assertTrue(parser.globalAliases.containsKey("x1"));
         assertTrue(parser.globalAliases.containsKey("x2"));
-        assertEquals("r16", parser.globalAliases.get("x1").register);
-        assertEquals("r17", parser.globalAliases.get("x2").register);
+        assertEquals("r16", parser.globalAliases.get("x1").register.asString());
+        assertEquals("r17", parser.globalAliases.get("x2").register.asString());
 
         parser = new Parser();
         boolean error;
@@ -459,6 +462,30 @@ class ParserTest {
         parser.parseLine(".equ LCD_DELTA_X");
         parser.parseLine("if (r25 == LCD_DELTA_X) goto label");
         assertEquals("breq\tlabel", parser.getOutput().getLastLine());
+    }
+
+    @Test
+    void testPairArgs() throws SyntaxException {
+        Parser parser = new Parser();
+        parser.parseLine(".proc my_proc");
+        parser.parseLine(".args x(r23.r24)");
+        assertEquals("my_proc", parser.currentProcedure.name);
+        assertTrue(parser.currentProcedure.args.size() == 1);
+//        assertTrue(parser.currentProcedure.args.containsKey("x"));
+//        assertEquals("r24", parser.currentProcedure.args.get("x").register);
+//        assertEquals("r22", parser.currentProcedure.args.get("y").register);
+        parser.parseLine(".endproc");
+
+
+        parser.preloadLine(".DEF rmp = R16");
+        parser.parseLine(".proc my_proc_2");
+        parser.parseLine(".args val(ZH.ZL.rmp)");
+        assertEquals("my_proc_2", parser.currentProcedure.name);
+        assertTrue(parser.currentProcedure.args.size() == 1);
+//        assertTrue(parser.currentProcedure.args.containsKey("x"));
+//        assertEquals("r24", parser.currentProcedure.args.get("x").register);
+//        assertEquals("r22", parser.currentProcedure.args.get("y").register);
+        parser.parseLine(".endproc");
     }
 
 

@@ -1,6 +1,7 @@
 package ru.trolsoft.asmext.data;
 
 import org.junit.jupiter.api.Test;
+import ru.trolsoft.asmext.processor.Token;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -8,9 +9,9 @@ class DataClassesTest {
 
     @Test
     void testAlias() {
-        Alias a1 = new Alias("a1", "r1");
-        Alias a2 = new Alias("a2", "r2");
-        Alias a11 = new Alias("a1", "r1");
+        Alias a1 = new Alias("a1", new Token(Token.TYPE_REGISTER, "r1"));
+        Alias a2 = new Alias("a2", new Token(Token.TYPE_REGISTER, "r2"));
+        Alias a11 = new Alias("a1", new Token(Token.TYPE_REGISTER, "r1"));
 
         assertEquals("alias (a1 -> r1)", a1.toString());
 

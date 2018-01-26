@@ -1,5 +1,7 @@
 package ru.trolsoft.asmext.data;
 
+import ru.trolsoft.asmext.processor.Token;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -49,7 +51,7 @@ public class Procedure {
     }
 
 
-    public String resolveVariable(String name) {
+    public Token resolveVariable(String name) {
         Alias alias = uses.get(name);
         if (alias != null) {
             return alias.register;

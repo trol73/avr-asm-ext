@@ -137,4 +137,22 @@ class ExpressionTest {
         assertTrue(!ind.isPair());
         assertEquals("PINA", ind.getName());
     }
+
+    @Test
+    void testGroups() {
+        Expression e;
+        e = new Expression(new TokenString(".args val(ZH.ZL.rmp)"));
+
+        assertEquals(8, e.size());
+        assertTrue(e.getFirst().isOperator("."));
+        assertEquals("args", e.get(1).asString());
+        assertEquals("val", e.get(2).asString());
+        assertTrue(e.get(3).isOperator("("));
+        assertEquals(Token.TYPE_REGISTER_GROUP, e.get(4).getType());
+        assertEquals(2, e.get(4).size());
+        assertEquals("ZH.ZL", e.get(4).toString());
+        assertTrue(e.get(5).isOperator("."));
+        assertEquals("rmp", e.get(6).asString());
+        assertTrue(e.get(7).isOperator(")"));
+    }
 }

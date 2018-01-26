@@ -60,12 +60,12 @@ public class Token {
     private final int type;
     private final String[] strings;
 
-    Token(int type, String s) {
+    public Token(int type, String s) {
         this.type = type;
         this.strings = new String[] {s};
     }
 
-    Token(int type, String[] strings) {
+    public Token(int type, String[] strings) {
         this.type = type;
         this.strings = strings;
     }
@@ -351,6 +351,15 @@ public class Token {
                 }
                 return true;
         }
+    }
+
+    @Override
+    public int hashCode() {
+        int hashCode = type;
+        for (String s : strings) {
+            hashCode = 31*hashCode + s.hashCode();
+        }
+        return hashCode;
     }
 
     public class ArrayIndex {
