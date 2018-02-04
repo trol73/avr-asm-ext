@@ -434,4 +434,36 @@ class ExpressionsCompilerTest {
 //        assertTrue(hasError("io[--PORTC].1 = 0"));
     }
 
+    @Test
+    void testFlagsModify() throws CompileException {
+        test("F_CARRY = 0", "clc");
+        test("F_CARRY = 1", "sec");
+    }
+
+    @Test
+    void testMoveIoToFlag() throws CompileException {
+        test("F_CARRY = io[PINC].4", "clc\nsbic\tPINC, 4\nsec");
+    }
+
+    @Test
+    void testMoveNegIoToFlag() throws CompileException {
+        test("F_CARRY = !io[PINC].4", "clc\nsbis\tPINC, 4\nsec");
+    }
+
+    @Test
+    void testMoveRegBitToIo() throws CompileException {
+        test("io[PORTC].0 = r16[4]", "sbrs\tr16, 4\ncbi\tPORTC, 0\nsbrc\tr16, 4\nsbi\tPORTC, 0");
+    }
+
+    @Test
+    void testMoveInverseRegBitToIo() throws CompileException {
+        test("io[PORTC].0 = !r16[4]", "sbrs\tr16, 4\nsbi\tPORTC, 0\nsbrc\tr16, 4\ncbi\tPORTC, 0");
+    }
+
+
+    @Test
+    void testFlagMath() throws CompileException {
+//        test("r10 += r10 + F_CARRY", "adc\tr10, r0");
+    }
+
 }

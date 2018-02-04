@@ -54,6 +54,14 @@ public class Token {
      * Array item (io[X], io[Y++] etc.)
      */
     public static final int TYPE_ARRAY_IO = 12;
+    /**
+     * SREG bit flag
+     */
+    public static final int TYPE_SREG_FLAG = 13;
+    /**
+     *  Register bit, "r11[0]" etc.
+     */
+    public static final int TYPE_REGISTER_BIT = 14;
 
 
 
@@ -79,12 +87,12 @@ public class Token {
         return strings[0];
     }
 
-    public int asInt() {
-        if (type != TYPE_NUMBER) {
-            throw new RuntimeException();
-        }
-        return ParserUtils.parseValue(strings[0]);
-    }
+//    public int asInt() {
+//        if (type != TYPE_NUMBER) {
+//            throw new RuntimeException();
+//        }
+//        return ParserUtils.parseValue(strings[0]);
+//    }
 
     @Override
     public String toString() {
@@ -158,6 +166,18 @@ public class Token {
         return type == TYPE_ARRAY_RAM || type == TYPE_ARRAY_IO || type == TYPE_ARRAY_PRG;
     }
 
+    public boolean isArrayIo() {
+        return type == TYPE_ARRAY_IO;
+    }
+
+    public boolean isFlag() {
+        return type == TYPE_SREG_FLAG;
+    }
+
+    public boolean isRegisterBit() {
+        return type == TYPE_REGISTER_BIT;
+    }
+
     public boolean isOperator(String operator) {
         return type == TYPE_OPERATOR && operator.equals(strings[0]);
     }
@@ -196,6 +216,18 @@ public class Token {
 
     public boolean isKeyword(String... strs) {
         if (type != TYPE_KEYWORD) {
+            return false;
+        }
+        for (String s : strs) {
+            if (s.equals(strings[0])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean isFlag(String... strs) {
+        if (type != TYPE_SREG_FLAG) {
             return false;
         }
         for (String s : strs) {
@@ -316,6 +348,16 @@ public class Token {
             throw new RuntimeException();
         }
         return new ArrayIndex();
+    }
+
+    public Token getBitIndex() {
+        if (!isRegisterBit()) {
+            throw new RuntimeException();
+        }
+        if (ParserUtils.isNumber(strings[1])) {
+            return new Token(TYPE_NUMBER, strings[1]);
+        }
+        return new Token(TYPE_CONST_EXPRESSION, strings[1]);
     }
 
     @Override

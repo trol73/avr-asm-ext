@@ -1,6 +1,7 @@
 package ru.trolsoft.asmext.processor;
 
 
+import org.omg.CORBA.SystemException;
 import ru.trolsoft.asmext.data.*;
 import ru.trolsoft.asmext.files.OutputFile;
 import ru.trolsoft.asmext.files.SourceFile;
@@ -24,7 +25,7 @@ public class Parser {
     Stack<Block> blocks = new Stack<>();
     boolean gcc;
     private Segment currentSegment;
-    boolean blockComment;
+    private boolean blockComment;
 
     Parser() {
 
@@ -81,15 +82,18 @@ public class Parser {
             } else if ("extern".equals(name)) {
                 processExtern(line, trimLine.substring(".extern".length()).trim());
             } else if ("equ".equalsIgnoreCase(name)) {
-                processEqu(line.toString(), trimLine.substring(".equ".length()).trim());
+                processEqu(line.toString(), trimLine.substring(".equ".length()).trim(), true);
             } else if ("set".equalsIgnoreCase(name)) {
-                processSet(line.toString(), trimLine.substring(".set".length()).trim());
+                processSet(line.toString(), trimLine.substring(".set".length()).trim(), true);
             } else {
                 processLine(line);
             }
-        } else if (firstToken != null && firstToken.equals("#define")) {
+        } else if ("#define".equals(firstToken)) {
             processDefine(line);
-
+        } else if ("continue".equals(firstToken)) {
+            processContinue(line);
+        } else if ("break".equals(firstToken)) {
+            processBreak(line);
 
 //        } else if (trimLine.startsWith("@") && trimLine.contains(":") && currentProcedure != null) {
 //            localLabel(trimLine.substring(1, trimLine.length() - 1).trim());
@@ -98,6 +102,7 @@ public class Parser {
             processLine(line);
         }
     }
+
 
     private boolean skipComment(TokenString line) {
         // comments in gcc
@@ -159,6 +164,14 @@ public class Parser {
             loadProcedureArgs(line);
         } else if ("def".equalsIgnoreCase(secondToken)) {
             def(line);
+        } else if ("include".equalsIgnoreCase(secondToken)) {
+            include(line);
+        } else if ("equ".equalsIgnoreCase(secondToken)) {
+            String trimLine = line.pure();
+            processEqu(line.toString(), trimLine.substring(".equ".length()).trim(), false);
+        } else if ("set".equalsIgnoreCase(secondToken)) {
+            String trimLine = line.pure();
+            processSet(line.toString(), trimLine.substring(".set".length()).trim(), false);
         }
     }
 
@@ -244,6 +257,13 @@ public class Parser {
         if (":".equals(str.getLastToken())) {
             str.removeLastToken();
         }
+        if (str.size() == 2) {
+            String label = (currentProcedure != null ? currentProcedure.name : "") + "__loop_" + lineNumber;
+            Block block = new Block(Block.TYPE_LOOP, null, lineNumber, label);
+            blocks.push(block);
+            output.add(block.getLabelStart() + ":");
+            return;
+        }
         // .loop (x>2)
         if (str.size() < 4) {
             error("expression expected");
@@ -255,13 +275,12 @@ public class Parser {
         str.removeFirstToken(); // loop
         str.removeFirstToken(); // (
         str.removeLastToken();  // )
-        Block block = new Block(Block.TYPE_LOOP, str.getTokens(), lineNumber);
+        String label = (currentProcedure != null ? currentProcedure.name : "") + "__" + str.getFirstToken() + "_" + lineNumber;
+        Block block = new Block(Block.TYPE_LOOP, str.getTokens(), lineNumber, label);
         if (block.args.isEmpty()) {
             error("loop parameter expected");
         }
         blocks.push(block);
-        block.label = currentProcedure != null ? currentProcedure.name : "";
-        block.label += "__" + block.args.get(0) + "_" + lineNumber;
         String reg = block.args.get(0);
         if (currentProcedure != null) {
             Token resolve = currentProcedure.resolveVariable(reg);
@@ -300,7 +319,7 @@ public class Parser {
             }
             sb.append("\t\t; ").append(block.args.get(0));
         }
-        output.add(block.label + ":");
+        output.add(block.getLabelStart() + ":");
     }
 
 
@@ -309,17 +328,36 @@ public class Parser {
         if (line.size() != 2) {
             error("extra characters in line");
         }
-        if (blocks.empty()) {
-            error(".loop not found");
-        }
+        getCurrentCycleBlock(); // call to check block type
         Block block = blocks.pop();
-        if (block.type != Block.TYPE_LOOP) {
-            error(".loop not found");
+        if (block.args != null) {
+            output.appendCommand(line, "dec", block.reg).append("\t\t; ").append(block.args.get(0));
+            output.appendCommand(line, "brne", block.getLabelStart());
+        } else {
+            output.appendCommand(line, "rjmp", block.getLabelStart());
         }
-        output.appendCommand(line, "dec", block.reg).append("\t\t; ").append(block.args.get(0));
-        output.appendCommand(line, "brne", block.label);
+        if (block.getLabelEnd() != null) {
+            output.add(block.getLabelEnd() + ":");
+        }
     }
 
+    private void processContinue(TokenString line) throws SyntaxException {
+        line.removeEmptyTokens();
+        if (line.size() != 1) {
+            error("extra characters in line");
+        }
+        Block block = getCurrentCycleBlock();
+        output.appendCommand(line, "rjmp", block.getLabelStart());
+    }
+
+    private void processBreak(TokenString line) throws SyntaxException {
+        line.removeEmptyTokens();
+        if (line.size() != 1) {
+            error("extra characters in line");
+        }
+        Block block = getCurrentCycleBlock();
+        output.appendCommand(line, "rjmp", block.buildEndLabel());
+    }
 
     private void processExtern(TokenString line, String args) throws SyntaxException {
         // check procedure
@@ -391,7 +429,7 @@ public class Parser {
         output.add(line);
     }
 
-    private void processEqu(String line, String args) throws SyntaxException {
+    private void processEqu(String line, String args, boolean addToOutput) throws SyntaxException {
         String split[] = args.split("=");
         if (split.length > 2) {
             error("wrong expression");
@@ -404,12 +442,12 @@ public class Parser {
         } else {
             constants.put(name, c);
         }
-        if (!gcc) {
+        if (!gcc && addToOutput) {
             output.add(line);
         }
     }
 
-    private void processSet(String line, String args) throws SyntaxException {
+    private void processSet(String line, String args, boolean addToOutput) throws SyntaxException {
         String split[] = args.split("=");
         if (split.length > 2) {
             error("wrong expression");
@@ -421,7 +459,7 @@ public class Parser {
         } else {
             constants.put(name, c);
         }
-        if (!gcc) {
+        if (!gcc && addToOutput) {
             output.add(line);
         }
     }
@@ -607,6 +645,38 @@ public class Parser {
         }
     }
 
+    private void include(TokenString str) throws SystemException {
+        StringBuilder arg = new StringBuilder();
+        // TODO move this to TokenString
+        for (int i = 0; i < str.size(); i++) {
+            String token = str.getToken(i);
+            if (arg.length() == 0 && (token.startsWith("'") || token.startsWith("\""))) {
+                arg.append(token);
+            } else if (token.endsWith("'") || token.endsWith("\"")) {
+                arg.append(token);
+                break;
+            } else if (arg.length() > 0) {
+                arg.append(token);
+            }
+        }
+        String fileName = ParserUtils.removeBrackets(arg.toString());
+        File file = new File(fileName);
+        if (file.exists()) {
+            SourceFile src = new SourceFile();
+            try {
+                src.read(file);
+                for (TokenString s : src) {
+                    preloadLine(s);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            } catch (SyntaxException e) {
+                e.printStackTrace();
+            }
+        }
+
+    }
+
     private Alias createAlias(String name, Token reg) throws SyntaxException {
         checkName(name);
         if (!reg.isRegister() && !reg.isPair() && !reg.isRegGroup() && !globalAliases.containsKey(reg.asString())) {
@@ -640,7 +710,7 @@ public class Parser {
     Variable getVariable(String name) {
         Variable result = variables.get(name);
         if (result == null) {
-            if (codeLabels.containsKey(name)) {
+            if (codeLabels.containsKey(name) || procedures.containsKey(name)) {
                 result = new Variable(name, Variable.Type.PRGPTR);
                 variables.put(name, result);
             }
@@ -797,5 +867,25 @@ public class Parser {
         Expression expr = new Expression(src);
         markConstAndVariables(expr);
         return expr;
+    }
+
+
+    Block getLastBlock() {
+        if (blocks.isEmpty()) {
+            return null;
+        }
+        return blocks.get(blocks.size()-1);
+    }
+
+    boolean isLastBlockIs(int type) {
+        Block last = getLastBlock();
+        return last != null && last.type == type;
+    }
+
+    Block getCurrentCycleBlock() throws SyntaxException {
+        if (!isLastBlockIs(Block.TYPE_LOOP)) {
+            error(".loop not found");
+        }
+        return getLastBlock();
     }
 }

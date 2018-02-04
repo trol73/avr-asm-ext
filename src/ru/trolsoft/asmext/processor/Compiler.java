@@ -1,6 +1,7 @@
 package ru.trolsoft.asmext.processor;
 
 import ru.trolsoft.asmext.data.Argument;
+import ru.trolsoft.asmext.data.Block;
 import ru.trolsoft.asmext.data.Procedure;
 import ru.trolsoft.asmext.files.OutputFile;
 import ru.trolsoft.asmext.utils.TokenString;
@@ -8,10 +9,14 @@ import ru.trolsoft.asmext.utils.TokenString;
 import java.util.ArrayList;
 import java.util.List;
 
+import static ru.trolsoft.asmext.processor.AsmInstr.BRANCH_IF_FLAG_CLEAR_MAP;
+import static ru.trolsoft.asmext.processor.AsmInstr.BRANCH_IF_FLAG_SET_MAP;
+
 class Compiler {
 
     private final Parser parser;
     private final ExpressionsCompiler expressionsCompiler;
+
 
     Compiler(Parser parser) {
         this.parser = parser;
@@ -161,7 +166,8 @@ class Compiler {
 
 
     private boolean compileIfGoto(TokenString src, Expression expr, OutputFile out) throws SyntaxException {
-        checkMinLength(expr, 6);
+//        int minLength = 6;//(expr.getLast().isSomeString("break") && expr.getLast(1).isOperator(")")) ? 5 : 6;
+        checkMinLength(expr, 5);
         boolean signed;
         Token t = expr.get(1);
 
@@ -174,16 +180,80 @@ class Compiler {
         } else {
             signed = false;
         }
-        if (!expr.getLast(1).isKeyword("goto") || !expr.get(1).isOperator("(") || !expr.getLast(2).isOperator(")")) {
+        Token label = null;
+        String command = null;
+        int closeBracketLastIndex = -1;
+        if (expr.getLast(1).isKeyword("goto") || "rjmp".equals(expr.getLast(1).asString())) {
+            command = "rjmp";
+            label = expr.getLast();
+            closeBracketLastIndex = 2;
+        } else if ("rcall".equals(expr.getLast(1).asString())) {
+            command = "rcall";
+            label = expr.getLast();
+            closeBracketLastIndex = 2;
+        } else if ("ret".equals(expr.getLast().asString())) {
+            command = "ret";
+            closeBracketLastIndex = 1;
+        } else if ("reti".equals(expr.getLast().asString())) {
+            command = "reti";
+            closeBracketLastIndex = 1;
+        } else if ("continue".equals(expr.getLast().asString()) && parser.isLastBlockIs(Block.TYPE_LOOP)) {
+            command = "rjmp";
+            label = new Token(Token.TYPE_OTHER, parser.getLastBlock().getLabelStart());
+            closeBracketLastIndex = 1;
+        } else if ("break".equals(expr.getLast().asString()) && parser.isLastBlockIs(Block.TYPE_LOOP)) {
+            command = "rjmp";
+            label = new Token(Token.TYPE_OTHER, parser.getLastBlock().buildEndLabel());
+            closeBracketLastIndex = 1;
+        } else {
+            invalidExpressionError();
+        }
+        if (!expr.get(1).isOperator("(") || !expr.getLast(closeBracketLastIndex).isOperator(")")) {
             invalidExpressionError();
         }
 
-        Token left = expr.get(2);
-        Token operation = expr.get(3);
-        Token right = expr.get(4);
-        Token label = expr.getLast();
+        Token a1 = expr.get(2);
+        Token a2 = expr.get(3);
+        Token a3 = expr.get(4);
+        Token a4 = expr.size() > 5 ? expr.get(5) : null;
+        if (a1.isFlag()) {
+            compileIfFlagExpression(src, false, a1, label, out);
+        } else if (a1.isOperator("!") && a2.isFlag()) {
+            compileIfFlagExpression(src, true, a2, label, out);
+        } else if (a1.isRegisterBit()) {
+            compileIfRegisterBitExpression(src, false, a1, command, label, out);
+        } else if (a1.isOperator("!") && a2.isRegisterBit()) {
+            compileIfRegisterBitExpression(src, true, a2, command, label, out);
+        } else if (a1.isArrayIo() && a2.isOperator(".")) {
+            compileIfIoBitExpression(src, false, a1, a3, command, label, out);
+        } else if (a1.isOperator("!") && a2.isArrayIo() && a3.isOperator(".") && a4 != null) {
+            compileIfIoBitExpression(src, true, a2, a4, command, label, out);
+        } else {
+            out.addComment(src);
+            compileIfBinaryExpression(src, signed, a2, a1, a3, label, out);
+        }
+        return true;
+    }
 
-        out.addComment(src);
+    private void compileIfFlagExpression(TokenString src, boolean not, Token flag, Token label, OutputFile out) {
+        String cmd = not ? BRANCH_IF_FLAG_CLEAR_MAP.get(flag.asString()) : BRANCH_IF_FLAG_SET_MAP.get(flag.asString());
+        out.appendCommand(src, cmd, label);
+    }
+
+    private void compileIfRegisterBitExpression(TokenString src, boolean not, Token regBit, String cmd, Token label, OutputFile out) throws SyntaxException {
+        Token index = regBit.getBitIndex();
+        checkBitIndex(index);
+        out.appendCommand(src, not ? "sbrs" : "sbrc", regBit.asString(), index.asString());
+        out.appendCommand(src, cmd, label);
+    }
+
+    private void compileIfIoBitExpression(TokenString src, boolean not, Token ioPort, Token index, String cmd, Token label, OutputFile out) throws SyntaxException {
+        checkBitIndex(index);
+        out.appendCommand(src, not ? "sbis" : "sbic", arrayIndexToPort(ioPort), index.asString());
+        out.appendCommand(src, cmd, label);
+    }
+
+    private void compileIfBinaryExpression(TokenString src, boolean signed, Token operation, Token left, Token right, Token label, OutputFile out) throws SyntaxException {
         String jumpCmd;
         //  BRCS = BRLO, BRCC = BRSH
         switch (operation.asString()) {
@@ -244,7 +314,7 @@ class Compiler {
             default:
                 unsupportedOperationError();
         }
-        return true;
+
     }
 
     private void addCompareInstruction(TokenString src, Token left, Token right, OutputFile out) throws SyntaxException {
@@ -301,6 +371,25 @@ class Compiler {
         } catch (ExpressionsCompiler.CompileException e) {
             throw new SyntaxException(e.getMessage() != null ? e.getMessage() : "expression error", e);
         }
+    }
+
+    private static void checkBitIndex(Token t) throws SyntaxException {
+        if (t.isNumber()) {
+            int val = t.getNumberValue();
+            if (val < 0 || val > 7) {
+                throw new SyntaxException("wrong index: " + val);
+            }
+        } else if (!t.isAnyConst() && !t.isSomeString()) {
+            throw new SyntaxException("bit offset constant expected: " + t);
+        }
+    }
+
+    private String arrayIndexToPort(Token tokenIndex) throws SyntaxException {
+        Token.ArrayIndex index = tokenIndex.getIndex();
+        if (index.hasModifier() || index.isPair()) {
+            throw new SyntaxException("io");
+        }
+        return parser.gcc ? "_SFR_IO_ADDR(" + index.getName() + ")" : index.getName();
     }
 
     private static void checkRegister(Token t) throws SyntaxException {

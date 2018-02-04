@@ -12,17 +12,22 @@ public class Expression implements Iterable<Token> {
 
     private static final Set<String> OPERATORS;
     private static final Set<String> KEYWORDS;
+    private static final Set<String> SREG_FLAGS;
 
     static {
         String[] operators = {
                 "=", "==", "!=", ">=", "<=", "+", "-", "&", "|", ":", ",", "<<", ">>",
-                "+=", "-=", "&=", "|=", "<<=", ">>=", "(", ")", "++", "--", "."
+                "+=", "-=", "&=", "|=", "<<=", ">>=", "(", ")", "++", "--", ".", "!"
         };
         OPERATORS = new HashSet<>(Arrays.asList(operators));
         String[] keywords = {
                 "if", "goto"
         };
         KEYWORDS = new HashSet<>(Arrays.asList(keywords));
+        String[] flags = {
+                "F_GLOBAL_INT", "F_BIT_COPY", "F_HALF_CARRY", "F_SIGN", "F_TCO", "F_NEG", "F_ZERO", "F_CARRY"
+        };
+        SREG_FLAGS = new HashSet<>(Arrays.asList(flags));
     }
 
     private final List<Token> list = new ArrayList<>();
@@ -45,6 +50,8 @@ public class Expression implements Iterable<Token> {
 
                 if (".".equals(next)) {
                     i = tryToParseGroupAndReturnIndex(tokens, i);
+                } else if ("[".equals(next)) {
+                    i = tryToParseRegisterBitAndReturnIndex(tokens, i);
                 } else { // group
                     Token reg = new Token(Token.TYPE_REGISTER, s);
                     list.add(reg);
@@ -54,6 +61,9 @@ public class Expression implements Iterable<Token> {
                 list.add(operator);
             } else if (KEYWORDS.contains(s)) {
                 Token keyword = new Token(Token.TYPE_KEYWORD, s);
+                list.add(keyword);
+            } else if (SREG_FLAGS.contains(s)) {
+                Token keyword = new Token(Token.TYPE_SREG_FLAG, s);
                 list.add(keyword);
             } else if (ParserUtils.isPair(s)) {
                 Token pair = new Token(Token.TYPE_PAIR, s);
@@ -124,6 +134,19 @@ public class Expression implements Iterable<Token> {
             list.add(group);
             return i - 1;
         }
+        return i;
+    }
+
+    private int tryToParseRegisterBitAndReturnIndex(List<String> tokens, int i) {
+        String regName = tokens.get(i-1);
+        if (i+2 < tokens.size() && "]".equals(tokens.get(i+2))) {
+            String bitIndex = tokens.get(i+1);
+            Token regBit = new Token(Token.TYPE_REGISTER_BIT, new String[] {regName, bitIndex});
+            list.add(regBit);
+            return i + 3;
+        }
+        Token reg = new Token(Token.TYPE_REGISTER, regName);
+        list.add(reg);
         return i;
     }
 

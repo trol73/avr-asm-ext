@@ -10,12 +10,20 @@ public class Block {
     public final List<String> args;
     public final int beginLine;
     public String reg;
-    public String label;
+    private String labelStart;
+    private String labelEnd;
 
     public Block(int type, List<String> args, int beginLine) {
         this.type= type;
         this.args = args;
         this.beginLine = beginLine;
+    }
+
+    public Block(int type, List<String> args, int beginLine, String labelStart) {
+        this.type= type;
+        this.args = args;
+        this.beginLine = beginLine;
+        this.labelStart = labelStart;
     }
 
     public Block(int type, String[] args, int beginLine) {
@@ -30,5 +38,20 @@ public class Block {
             }
         }
         return result;
+    }
+
+    public String buildEndLabel() {
+        if (labelEnd == null) {
+            labelEnd = labelStart + "_end";
+        }
+        return labelEnd;
+    }
+
+    public String getLabelStart() {
+        return labelStart;
+    }
+
+    public String getLabelEnd() {
+        return labelEnd;
     }
 }

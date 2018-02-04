@@ -143,6 +143,10 @@ class ParserTest {
                 )
         );
 
+    }
+
+    @Test
+    void testLoopError() {
         parser = new Parser();
         boolean error;
         try {
@@ -153,6 +157,39 @@ class ParserTest {
             error = true;
         }
         assertTrue(error);
+    }
+
+    @Test
+    void testLoopContinue() throws SyntaxException {
+        parser = new Parser();
+        test(a(
+                ".loop(r24 = 10):",
+                "continue",
+                ".endloop"
+            ), a (
+                "ldi r24, 10",
+                "__r24_1:",
+                "rjmp __r24_1",
+                "dec r24",
+                "brne __r24_1"
+                )
+        );
+    }
+
+    @Test
+    void testInfiniteLoop() throws SyntaxException {
+        parser = new Parser();
+        test(a(
+                ".loop:",
+                "break",
+                ".endloop"
+            ), a (
+                "__loop_1:",
+                "rjmp __loop_1_end",
+                "rjmp __loop_1",
+                "__loop_1_end:"
+            )
+        );
     }
 
     @Test

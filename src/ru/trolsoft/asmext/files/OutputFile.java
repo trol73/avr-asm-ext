@@ -148,7 +148,7 @@ public class OutputFile {
     }
 
     public StringBuilder appendCommand(TokenString src, String cmd, Token arg) {
-        return appendCommand(src, cmd, arg.asString());
+        return appendCommand(src, cmd, arg != null ? arg.asString() : null);
     }
 
     public StringBuilder appendCommand(TokenString src, String cmd) {

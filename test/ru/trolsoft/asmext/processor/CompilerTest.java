@@ -88,7 +88,7 @@ class CompilerTest {
     @Test
     void testProcCalls() throws SyntaxException {
         parser = new Parser();
-        compiler = new ru.trolsoft.asmext.processor.Compiler(parser);
+        compiler = new Compiler(parser);
 
         Procedure proc = new Procedure("my_proc");
         proc.addArg(new Alias("x", new Token(Token.TYPE_REGISTER, "r24")));
@@ -127,5 +127,97 @@ class CompilerTest {
         assertTrue(parser.getOutput().get(5).contains("ldi\tr24, 0x03"));
         parser.parseLine("rcall my_proc('=')");
     }
+
+    @Test
+    void testIfGotoFlags() throws SyntaxException {
+        parser = new Parser();
+        compiler = new Compiler(parser);
+
+        testLine("if (F_CARRY) goto CalcPwO", "brcs\tCalcPwO");
+        testLine("if (!F_CARRY) goto CalcPwO", "brcc\tCalcPwO");
+    }
+
+    @Test
+    void testIfRegisterBitSet() throws SyntaxException {
+        parser = new Parser();
+        compiler = new Compiler(parser);
+
+        testLine("if (r16[2]) goto loc_43", "sbrc\tr16, 2\nrjmp\tloc_43");
+        testLine("if (r1[OFFSET]) goto loc_43", "sbrc\tr1, OFFSET\nrjmp\tloc_43");
+
+        testLine("if (r16[2]) rjmp loc_43", "sbrc\tr16, 2\nrjmp\tloc_43");
+
+        testLine("if (r16[2]) rcall proc", "sbrc\tr16, 2\nrcall\tproc");
+
+        testLine("if (r16[2]) ret", "sbrc\tr16, 2\nret");
+    }
+
+    @Test
+    void testIfRegisterBitClear() throws SyntaxException {
+        parser = new Parser();
+        compiler = new Compiler(parser);
+
+        testLine("if (!r16[2]) goto loc_44", "sbrs\tr16, 2\nrjmp\tloc_44");
+        testLine("if (!r16[OFFSET]) goto loc_44", "sbrs\tr16, OFFSET\nrjmp\tloc_44");
+
+        testLine("if (!r16[2]) rjmp loc_44", "sbrs\tr16, 2\nrjmp\tloc_44");
+
+        testLine("if (!r16[2]) rcall proc", "sbrs\tr16, 2\nrcall\tproc");
+
+        testLine("if (!r16[2]) reti", "sbrs\tr16, 2\nreti");
+    }
+
+    @Test
+    void testIfRegisterBitClearContinueLoop() throws SyntaxException {
+        parser = new Parser();
+        compiler = new Compiler(parser);
+
+        parser.parseLine(".loop (r20 = 1)");
+        testLine("if (!r16[2]) continue", "sbrs\tr16, 2\nrjmp\t" + parser.getLastBlock().getLabelStart());
+    }
+
+    @Test
+    void testIfRegisterBitClearBreakLoop() throws SyntaxException {
+        parser = new Parser();
+        compiler = new Compiler(parser);
+
+        parser.parseLine(".loop (r20 = 1)");
+        testLine("if (!r16[2]) break", "sbrs\tr16, 2\nrjmp\t" + parser.getLastBlock().buildEndLabel());
+    }
+
+    @Test
+    void testIfRegisterBitSetError() {
+        parser = new Parser();
+        compiler = new Compiler(parser);
+
+        boolean error;
+        try {
+            testLine("if (r16[8]) goto loc_43", "sbrc\tr16, 8\nrjmp\tloc_43");
+            error = false;
+        } catch (SyntaxException e) {
+            error = true;
+        }
+        assertTrue(error);
+    }
+
+    @Test
+    void testIfIoBitIsSet() throws SyntaxException {
+        testLine("if (io[SPSR].SPIF) goto loop", "sbic\tSPSR, SPIF\nrjmp\tloop");
+    }
+
+    @Test
+    void testIfIoBitIsClear() throws SyntaxException {
+        testLine("if (!io[SPSR].SPIF) goto loop", "sbis\tSPSR, SPIF\nrjmp\tloop");
+    }
+
+
+//    @Test
+//    void testLoopIfBreak() throws SyntaxException {
+//        parser = new Parser();
+//        compiler = new Compiler(parser);
+//
+//        parser.parseLine(".loop");
+//
+//    }
 
 }

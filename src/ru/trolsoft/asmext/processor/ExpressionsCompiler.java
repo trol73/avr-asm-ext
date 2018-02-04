@@ -7,7 +7,10 @@ import ru.trolsoft.asmext.utils.TokenString;
 
 import java.util.List;
 
+import static ru.trolsoft.asmext.processor.AsmInstr.*;
+
 class ExpressionsCompiler {
+
 
     Parser parser;
 
@@ -44,6 +47,7 @@ class ExpressionsCompiler {
             }
             return compileExpr(src, expr, out);
         } catch (RuntimeException e) {
+e.printStackTrace();
             throw new CompileException("internal error: " + e.getMessage());
         }
     }
@@ -88,18 +92,17 @@ class ExpressionsCompiler {
         }
         switch (operation.asString()) {
             case "=":
+                expr.removeFirst(2);
                 if (dest.isRegister()) {
-                    expr.removeFirst(2);
                     moveToReg(src, dest, expr, out);
                 } else if (dest.isRegGroup() || dest.isPair()) {
-                    expr.removeFirst(2);
                     moveToGroupOrPair(src, dest, expr, out);
                 } else if (dest.isVar()) {
-                    expr.removeFirst(2);
                     moveToVar(src, dest, expr, out);
                 } else if (dest.isArray()) {
-                    expr.removeFirst(2);
                     moveToArray(src, dest, expr, out);
+                } else if (dest.isFlag()) {
+                    moveToFlag(src, dest, expr, out);
                 } else {
                     unexpectedExpressionError();
                 }
@@ -216,7 +219,15 @@ class ExpressionsCompiler {
         if (expr.size() > 1) {
             tryToMergeConstants(expr);
         }
-        Token firstArg = expr.get(0);
+        Token firstArg = expr.getFirst();
+        if (expr.size() == 3 && expr.get(1).isOperator("+")) {
+//            if (compileAddWithCarry(src, dest, firstArg, expr.get(2), out)) {
+//                expr.removeFirst();
+//                expr.removeFirst();
+//                return;
+//            }
+        }
+
         if (firstArg.isRegister()) {
             if (!firstArg.equals(dest)) {
                 out.appendCommand(src, "mov", dest, firstArg);
@@ -250,6 +261,17 @@ class ExpressionsCompiler {
             Token arg = expr.get(i*2+1);
             compileOperation(src, dest, arg, operation.asString(), out);
         }
+    }
+
+    private boolean compileAddWithCarry(TokenString src, Token dest, Token firstArg, Token secondArg, OutputFile out) {
+        if (firstArg.isRegister() && secondArg.isFlag("F_CARRY")) {
+            out.appendCommand(src, "adc", dest, firstArg);
+            return true;
+        } else if (firstArg.isFlag("F_CARRY") && secondArg.isRegister()) {
+            out.appendCommand(src, "adc", dest, secondArg);
+            return true;
+        }
+        return false;
     }
 
     private void compileOperation(TokenString src, Token dest, Token arg, String operation, OutputFile out) throws CompileException {
@@ -463,16 +485,13 @@ class ExpressionsCompiler {
     }
 
     private void moveFromArray(TokenString src, Token destReg, Token array, OutputFile out) throws CompileException {
-        Token.ArrayIndex index = array.getIndex();
+        Token.ArrayIndex index;
         switch (array.getType()) {
             case Token.TYPE_ARRAY_IO:
-                if (!index.hasModifier() && !index.isPair()) {
-                    out.appendCommand(src, "in", destReg, arrayIndexToPort(index));
-                } else {
-                    wrongArrayIndex("io");
-                }
+                out.appendCommand(src, "in", destReg, arrayIndexToPort(array));
                 break;
             case Token.TYPE_ARRAY_PRG:
+                index = array.getIndex();
                 if (!"Z".equals(index.getName())) {
                     wrongArrayIndex("prg");
                 }
@@ -489,6 +508,7 @@ class ExpressionsCompiler {
                 }
                 break;
             case Token.TYPE_ARRAY_RAM:
+                index = array.getIndex();
                 if (!index.isPair() || index.isPreInc() || index.isPostDec()) {
                     unsupportedOperationError();
                 }
@@ -504,21 +524,18 @@ class ExpressionsCompiler {
             unsupportedOperationError();
         }
         Token arg = expr.getFirst();
-        Token.ArrayIndex index = dest.getIndex();
         if (!arg.isRegister()) {
             unsupportedOperationError();
         }
         switch (dest.getType()) {
             case Token.TYPE_ARRAY_IO:
-                if (index.hasModifier() || index.isPair()) {
-                    unsupportedOperationError();
-                }
-                out.appendCommand(src, "out", arrayIndexToPort(index), arg.asString());
+                out.appendCommand(src, "out", arrayIndexToPort(dest), arg.asString());
                 break;
             case Token.TYPE_ARRAY_PRG:
                 unsupportedOperationError("can't write to prg[]");
                 break;
             case Token.TYPE_ARRAY_RAM:
+                Token.ArrayIndex index = dest.getIndex();
                  if (!index.isPair() || index.isPreInc() || index.isPostDec()) {
                      wrongArrayIndex("ram");
                  }
@@ -529,34 +546,86 @@ class ExpressionsCompiler {
         }
     }
 
-    private void setBitInPort(TokenString src, Token array, Expression expr, OutputFile out) throws CompileException {
-        if (expr.size() != 5) {
-            unsupportedOperationError();
-        }
-        Token bitToken = expr.get(2);
-        Token assign = expr.get(3);
-        Token val = expr.get(4);
-        Token.ArrayIndex index = array.getIndex();
-        if (!assign.isOperator("=") || !val.isNumber() || index.hasModifier() || index.isPair()) {
-            unsupportedOperationError();
-        }
-        if (bitToken.isNumber()) {
-            int bit = bitToken.getNumberValue();
-            if (bit < 0 || bit > 7) {
-                unsupportedOperationError("wrong bit number");
+    private void moveToFlag(TokenString src, Token dest, Expression expr, OutputFile out) throws CompileException {
+        if (expr.size() == 1) {
+            Token arg = expr.getFirst();
+            if (!arg.isNumber()) {
+                unsupportedOperationError("1 or 0 expected for flag");
             }
-        } else if (!(bitToken.isAnyConst() || bitToken.getType() == Token.TYPE_OTHER)) {
-            unsupportedOperationError("bit number expected after dot");
-        }
-        if (val.getNumberValue() == 1) {
-            out.appendCommand(src, "sbi", arrayIndexToPort(index), bitToken.asString());
-        } else if (val.getNumberValue() == 0) {
-            out.appendCommand(src, "cbi", arrayIndexToPort(index), bitToken.asString());
+            int val = arg.getNumberValue();
+            if (val == 0) {
+                out.appendCommand(src, CLEAR_FLAG_MAP.get(dest.asString()));
+            } else if (val == 1) {
+                out.appendCommand(src, SET_FLAG_MAP.get(dest.asString()));
+            } else {
+                unsupportedOperationError("1 or 0 expected for flag");
+            }
+        } else if (expr.size() == 3 && expr.getFirst().isArrayIo() && expr.get(1).isOperator(".") && expr.get(2).isAnyConst()) {
+            Token bitNumber = expr.get(2);
+            checkBitNumber(bitNumber);
+            out.appendCommand(src, CLEAR_FLAG_MAP.get(dest.asString()));
+            out.appendCommand(src, "sbic", arrayIndexToPort(expr.getFirst()), bitNumber.asString());
+            out.appendCommand(src, SET_FLAG_MAP.get(dest.asString()));
+        } else if (expr.size() == 4 && expr.getFirst().isOperator("!") && expr.get(1).isArrayIo() && expr.get(2).isOperator(".") && expr.get(3).isAnyConst()) {
+            Token bitNumber = expr.get(3);
+            checkBitNumber(bitNumber);
+            out.appendCommand(src, CLEAR_FLAG_MAP.get(dest.asString()));
+            out.appendCommand(src, "sbis", arrayIndexToPort(expr.get(1)), bitNumber.asString());
+            out.appendCommand(src, SET_FLAG_MAP.get(dest.asString()));
         } else {
-            unsupportedOperationError("1 or 0 expected");
+            unsupportedOperationError();
         }
     }
 
+
+    private void setBitInPort(TokenString src, Token array, Expression expr, OutputFile out) throws CompileException {
+        if (expr.size() == 5 && expr.get(3).isOperator("=") && expr.get(4).isNumber()) {
+            // io[PORTC].5 = 1
+            Token val = expr.get(4);
+            Token bitToken = expr.get(2);
+            checkBitNumber(bitToken);
+            if (val.getNumberValue() == 1) {
+                out.appendCommand(src, "sbi", arrayIndexToPort(array), bitToken.asString());
+            } else if (val.getNumberValue() == 0) {
+                out.appendCommand(src, "cbi", arrayIndexToPort(array), bitToken.asString());
+            } else {
+                unsupportedOperationError("1 or 0 expected");
+            }
+        } else if (expr.size() == 5 && expr.get(3).isOperator("=") && expr.get(4).isRegisterBit()) {
+            // io[PORTC].5 = r0[1]
+            Token bitReg = expr.get(4);
+            Token bitToken = expr.get(2);
+            checkBitNumber(bitToken);
+
+            out.appendCommand(src, "sbrs", bitReg.asString(), bitReg.getBitIndex().asString());
+            out.appendCommand(src, "cbi", arrayIndexToPort(array), bitToken.asString());
+            out.appendCommand(src, "sbrc", bitReg.asString(), bitReg.getBitIndex().asString());
+            out.appendCommand(src, "sbi", arrayIndexToPort(array), bitToken.asString());
+        } else if (expr.size() == 6 && expr.get(3).isOperator("=") && expr.get(4).isOperator("!") && expr.get(5).isRegisterBit()) {
+            // io[PORTC].5 = !r10[1]
+            Token bitReg = expr.get(5);
+            Token bitToken = expr.get(2);
+            checkBitNumber(bitToken);
+            out.appendCommand(src, "sbrs", bitReg.asString(), bitReg.getBitIndex().asString());
+            out.appendCommand(src, "sbi", arrayIndexToPort(array), bitToken.asString());
+            out.appendCommand(src, "sbrc", bitReg.asString(), bitReg.getBitIndex().asString());
+            out.appendCommand(src, "cbi", arrayIndexToPort(array), bitToken.asString());
+        } else {
+            unsupportedOperationError();
+        }
+    }
+
+
+    private void checkBitNumber(Token token) throws CompileException {
+        if (token.isNumber()) {
+            int bit = token.getNumberValue();
+            if (bit < 0 || bit > 7) {
+                unsupportedOperationError("wrong bit number");
+            }
+        } else if (!(token.isAnyConst() || token.isSomeString())) {
+            unsupportedOperationError("bit number expected after dot");
+        }
+    }
 
 
     private static String hexByteStr(int val) {
@@ -807,22 +876,14 @@ class ExpressionsCompiler {
         }
     }
 
-    private String arrayIndexToPort(Token.ArrayIndex index) {
+    private String arrayIndexToPort(Token tokenIndex) throws CompileException {
+        Token.ArrayIndex index = tokenIndex.getIndex();
+        if (index.hasModifier() || index.isPair()) {
+            wrongArrayIndex("io");
+        }
         return parser.gcc ? "_SFR_IO_ADDR(" + index.getName() + ")" : index.getName();
     }
 
-
-    private boolean isConstExpression(String s) {
-        return parser.isConstExpression(s);
-    }
-
-    private boolean isConstExpressionTokens(List<String> tokens) {
-        return parser.isConstExpressionTokens(tokens, null);
-    }
-
-    private boolean isConstExpressionTokens(List<String> tokens, List<String> constants) {
-        return parser.isConstExpressionTokens(tokens, constants);
-    }
 
     private static void unsupportedOperationError() throws CompileException {
         throw new CompileException("unsupported operation");
