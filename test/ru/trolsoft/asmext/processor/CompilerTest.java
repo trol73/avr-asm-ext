@@ -122,7 +122,6 @@ class CompilerTest {
         parser.parseLine(".proc my_proc");
         parser.parseLine(".args val(rmp)");
         parser.parseLine(".endproc");
-
         parser.parseLine("rcall my_proc(0x03)");
         assertTrue(parser.getOutput().get(5).contains("ldi\tr24, 0x03"));
         parser.parseLine("rcall my_proc('=')");

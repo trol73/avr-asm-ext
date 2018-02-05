@@ -31,8 +31,8 @@ class ParserTest {
                 o.add(s.trim());
             }
         }
-        //System.out.println(o);
-        //System.out.println(o.size() + "  |  " + out.length);
+//        System.out.println(o);
+//        System.out.println(o.size() + "  |  " + out.length);
         assertTrue(o.size() == out.length);
         int i = 0;
         for (String s : o) {
@@ -43,7 +43,7 @@ class ParserTest {
             s = s.trim();
             s = s.replace('\t', ' ');
             //System.out.println("? " + s + "|" + out[i]);
-            assertEquals(s, out[i++]);
+            assertEquals(out[i++], s);
         }
     }
 
@@ -209,6 +209,36 @@ class ParserTest {
         }
         assertTrue(error);
     }
+
+
+    @Test
+    void testProcWitchArgs() throws SyntaxException {
+        parser = new Parser();
+        test(a(
+                ".proc my_proc(x: r12)", ".endproc"), a("my_proc:", "", ""));
+        assertTrue(parser.procedures.containsKey("my_proc"));
+        assertEquals(1, parser.procedures.get("my_proc").args.size());
+        assertTrue(parser.procedures.get("my_proc").args.containsKey("x"));
+        assertTrue(parser.procedures.get("my_proc").args.get("x").register.isRegister("r12"));
+
+        test(a("rcall my_proc (3)"), a("", "ldi r12, 3", "rcall my_proc"));
+    }
+
+    @Test
+    void testProcWitchUserArg() throws SyntaxException {
+        parser = new Parser();
+
+        parser.preloadLine(".DEF rmp = R16");
+        parser.parseLine(".proc my_proc_2 (val: ZH.ZL.rmp)");
+        assertEquals("my_proc_2", parser.currentProcedure.name);
+        assertTrue(parser.currentProcedure.args.size() == 1);
+//        assertTrue(parser.currentProcedure.args.containsKey("x"));
+//        assertEquals("r24", parser.currentProcedure.args.get("x").register);
+//        assertEquals("r22", parser.currentProcedure.args.get("y").register);
+        parser.parseLine(".endproc");
+
+    }
+
 
 
     @Test

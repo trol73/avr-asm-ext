@@ -154,10 +154,10 @@ public class Parser {
             }
         }
         if ("proc".equals(secondToken)) {
-            line.removeEmptyTokens();
-            String name = line.getToken(2);
-            currentProcedure = new Procedure(name);
-            procedures.put(name, currentProcedure);
+            replaceGlobalAliases(line);
+            Expression expr = new Expression(line);
+            expr.removeFirst(2);
+            currentProcedure = loadProcedureDefinition(expr);
         } else if ("endproc".equals(secondToken)) {
             currentProcedure = null;
         } else if ("args".equals(secondToken)) {
@@ -225,17 +225,14 @@ public class Parser {
 
 
     private void startProcedure(TokenString src) throws SyntaxException {
-        src.removeEmptyTokens();
-        if (src.size() < 3) {
+        replaceGlobalAliases(src);
+        Expression expr = new Expression(src);
+        if (expr.size() < 3) {
             error("name expected");
         }
-        String name = src.getToken(2);
-        checkName(name);
-        if (currentProcedure != null) {
-            error("nested .proc: '" + name + "'");
-        }
-        currentProcedure = new Procedure(name);
-        procedures.put(name, currentProcedure);
+        expr.removeFirst(2); // .proc
+        String name = expr.getFirst().asString();
+        currentProcedure = loadProcedureDefinition(expr);
         output.add(name + ":");
         output.addComment(src);
     }
@@ -360,66 +357,42 @@ public class Parser {
     }
 
     private void processExtern(TokenString line, String args) throws SyntaxException {
+        Expression expr = new Expression(line);
+        if (expr.size() < 3) {
+            error("wrong syntax");
+        }
         // check procedure
         // .extern drawCharXY (x:r24, y:r22, char:r20)
-        // TODO !!!! TS -> EXPR
-        int index = args.indexOf('(');
-        if (index > 0) {
-            String procArgs = args.substring(index);
-            if (!procArgs.endsWith(")")) {
-                error("') not found");
-            }
-            procArgs = procArgs.substring(1, procArgs.length()-1).trim();
-            String procName = args.substring(0, index).trim();
-
-            String[] split = procArgs.split(",");
-            Procedure proc = new Procedure(procName);
-            for (String s : split) {
-                s = s.trim();
-                String nv[] = s.split(":");
-                if (nv.length != 2) {
-                    error("wrong argument: " + s);
-                }
-                String name = nv[0].trim();
-                String reg = nv[1].trim();
-                if (globalAliases.containsKey(reg)) {
-                    reg = globalAliases.get(reg).register.toString();
-                }
-                Alias alias = createAlias(name, new Token(Token.TYPE_REGISTER, reg));
-                if (proc.hasArg(name)) {
-                    error("duplicate argument '" + name + "'");
-                }
-                proc.addArg(alias);
-            } // for
-            procedures.put(procName, proc);
-            if (gcc) {
-                output.add(".extern " + procName + "\t; " + procArgs);
-            }
+        if (expr.size() > 3 && expr.get(3).isOperator("(")) {
+            expr.removeFirst(2); // .extern
+            loadProcedureDefinition(expr);
             return;
         }
+
         // check variable
-        index = args.indexOf(':');
-        if (index > 0) {
-            String varNames = args.substring(0, index).trim();
-            String varType = args.substring(index+1).trim().toLowerCase();
-            List<String> names = new TokenString(varNames).getTokens();
-            ParserUtils.removeEmptyTokens(names);
-            for (String varName : names) {
-                if (",".equals( varName)) {
-                    continue;
+        if (expr.getLast(1).isOperator(":")) {
+            Token varType = expr.getLast();
+            Variable.Type type = ParserUtils.getVarType(varType.asString());
+            if (type == null) {
+                error("Invalid variable type: " + varType);
+            }
+            int index = 2;
+            while (index < expr.size()-2) {
+                Token varName = expr.get(index++);
+                Token next = expr.get(index);
+                if (next.isOperator(",")) {
+                    index++;
+                } else if (index != expr.size() - 2) {
+                    error("error in .extern declaration");
                 }
-                if (!ParserUtils.isValidName(varName) || ParserUtils.isRegister(varName)) {
+                if (!varName.isSomeString() || !ParserUtils.isValidName(varName.asString())) {
                     error("Wrong name: " + varName);
                 }
-                if (variables.containsKey(varName)) {
+                if (variables.containsKey(varName.asString())) {
                     error("Variable already defined: " + varName);
                 }
-                Variable.Type type = ParserUtils.getVarType(varType);
-                if (type == null) {
-                    error("Invalid variable type: " + varType);
-                }
-                Variable var = new Variable(varName, type);
-                variables.put(varName, var);
+                Variable var = new Variable(varName.asString(), type);
+                variables.put(varName.asString(), var);
                 if (gcc) {
                     output.add(".extern " + varName + "\t; " + varType);
                 }
@@ -427,6 +400,53 @@ public class Parser {
             return;
         }
         output.add(line);
+    }
+
+    private Procedure loadProcedureDefinition(Expression expr) throws SyntaxException {
+        String procName = expr.get(0).asString();
+        if (currentProcedure != null) {
+            error("nested procedure declaration: " + procName);
+        }
+        checkName(procName);
+        Procedure proc = new Procedure(procName);
+        procedures.put(procName, proc);
+        if (expr.size() == 1) {
+            return proc;
+        }
+        if (expr.size() < 3 || !expr.get(1).isOperator("(") || !expr.getLast().isOperator(")")) {
+            error("procedure declaration error");
+        }
+        int index = 2;
+        while (index < expr.size()-1) {
+            Token argName = expr.getIfExist(index++);
+            Token colons = expr.getIfExist(index++);
+            Token argRegs = expr.getIfExist(index++);
+            if (argRegs == null || colons == null || !colons.isOperator(":") ||
+                    (!argRegs.isRegister() && !argRegs.isPair() && !argRegs.isRegGroup())) {
+                error("wrong argument: " + argName);
+            }
+
+            String arg = argName.asString();
+            if (globalAliases.containsKey(arg)) {
+                argRegs = globalAliases.get(arg).register;
+            }
+
+            if (proc.hasArg(arg)) {
+                error("duplicate argument '" + arg + "'");
+            }
+            Alias alias = createAlias(arg, argRegs);
+            proc.addArg(alias);
+            Token next = expr.get(index);
+            if (next.isOperator(",")) {
+                index++;
+            } else if (!(next.isOperator(")") && index == expr.size()-1)) {
+                error("wrong syntax");
+            }
+        }
+        if (gcc) {
+            output.add(".extern " + procName);
+        }
+        return proc;
     }
 
     private void processEqu(String line, String args, boolean addToOutput) throws SyntaxException {
@@ -485,7 +505,6 @@ public class Parser {
         }
         replaceGlobalAliases(line);
         Expression expr = new Expression(line);
-//System.out.println(expr);
         for (int i = 2; i < expr.size(); ) {
             String name = line.getToken(i++);
             if (i >= expr.size()-1 || !expr.get(i++).isOperator("(")) {
@@ -514,33 +533,6 @@ public class Parser {
             }
         }
 
-/*
-        line.removeEmptyTokens();
-        for (int i = 2; i < line.size(); ) {
-            String name = line.getToken(i++);
-            if (i >= line.size()-1 || !"(".equals(line.getToken(i++))) {
-                error("wrong argument: " + name);
-            }
-            String reg = line.getToken(i++);
-            if (i >= line.size() || !")".equals(line.getToken(i++))) {
-                error("wrong argument: " + name);
-            }
-            if (globalAliases.containsKey(reg)) {
-                reg = globalAliases.get(reg).register;
-            }
-            Alias alias = createAlias(name, reg);
-            if (currentProcedure.hasAlias(name)) {
-                error("alias '" + name + "' already defined for this procedure");
-            }
-            if (currentProcedure.hasArg(name)) {
-                error("argument '" + name + "' already defined for this procedure");
-            }
-            currentProcedure.addArg(alias);
-            if (i < line.size() && !",".equals(line.getToken(i++))) {
-                error("wrong argument, comma expected after " + name);
-            }
-        }
-*/
         output.add(";" + line);
     }
 
@@ -582,43 +574,6 @@ public class Parser {
             }
         }
         output.addComment(str);
-
-/*
-        str.removeEmptyTokens();
-        int index = 2;
-        while (index < str.size()) {
-            if (index + 2 >= str.size()) {
-                error("wrong .use syntax ");
-            }
-            String regName = str.getToken(index++);
-            String as = str.getToken(index++);
-            String aliasName = str.getToken(index++);
-            if (!"as".equals(as)) {
-                error("wrong .use syntax ");
-            }
-            if (index < str.size()) {
-                if (!",".equals(str.getToken(index++))) {
-                    error("wrong .use syntax ");
-                }
-            }
-            Alias alias = createAlias(aliasName, regName);
-            if (currentProcedure != null) {
-                if (currentProcedure.hasAlias(aliasName)) {
-                    error("alias '" + aliasName + "' already defined for this procedure");
-                }
-                if (currentProcedure.hasArg(aliasName)) {
-                    error("argument '" + aliasName + "' already defined for this procedure");
-                }
-                currentProcedure.addAlias(alias);
-            } else {
-                if (globalAliases.containsKey(aliasName)) {
-                    error("global alias '" + aliasName + "' already defined");
-                }
-                globalAliases.put(aliasName, alias);
-            }
-        }
-        output.addComment(str);
-*/
     }
 
     private void def(TokenString str) throws SyntaxException {
@@ -882,7 +837,7 @@ public class Parser {
         return last != null && last.type == type;
     }
 
-    Block getCurrentCycleBlock() throws SyntaxException {
+    private Block getCurrentCycleBlock() throws SyntaxException {
         if (!isLastBlockIs(Block.TYPE_LOOP)) {
             error(".loop not found");
         }

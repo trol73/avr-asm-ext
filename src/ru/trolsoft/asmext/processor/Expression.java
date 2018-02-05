@@ -224,6 +224,10 @@ public class Expression implements Iterable<Token> {
         return list.get(index);
     }
 
+    public Token getIfExist(int index) {
+        return index < list.size() ? list.get(index) : null;
+    }
+
     public Token set(int index, Token t) {
         return list.set(index, t);
     }

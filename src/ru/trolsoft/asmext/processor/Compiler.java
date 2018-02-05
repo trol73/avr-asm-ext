@@ -81,7 +81,7 @@ class Compiler {
         int index = 3;
         while (index < expr.size()-1) {
             Token name = expr.get(index++);
-            Token colon = index < expr.size() ? expr.get(index++) : null;
+            Token colon = expr.getIfExist(index++);
             if (colon == null || !colon.isOperator(":")) {
                 wrongCallSyntaxError();
             }
