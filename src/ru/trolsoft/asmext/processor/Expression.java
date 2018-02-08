@@ -17,7 +17,8 @@ public class Expression implements Iterable<Token> {
     static {
         String[] operators = {
                 "=", "==", "!=", ">=", "<=", "+", "-", "&", "|", ":", ",", "<<", ">>",
-                "+=", "-=", "&=", "|=", "<<=", ">>=", "(", ")", "++", "--", ".", "!"
+                "+=", "-=", "&=", "|=", "<<=", ">>=", "(", ")", "++", "--", ".", "!",
+                "{", "}"
         };
         OPERATORS = new HashSet<>(Arrays.asList(operators));
         String[] keywords = {
@@ -293,6 +294,35 @@ public class Expression implements Iterable<Token> {
 
     public Token getLast(int index) {
         return list.get(list.size() - 1 - index);
+    }
+
+    public int findOperator(int fromIndex, String ...operators) {
+        for (int i = fromIndex; i < size(); i++) {
+            if (get(i).isOperator(operators)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    public int findFirstOperator(String ...operators) {
+        return findOperator(0, operators);
+    }
+
+    public Expression subExpression(int fromIndex, int toIndex) {
+        Expression exp = new Expression();
+        for (int i = fromIndex; i <= toIndex; i++) {
+            exp.add(get(i));
+        }
+        return exp;
+    }
+
+    public Expression subExpression(int fromIndex) {
+        return subExpression(fromIndex, size()-1);
+    }
+
+    public Expression copy() {
+        return subExpression(0);
     }
 
     @Override

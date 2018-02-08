@@ -1,7 +1,6 @@
 package ru.trolsoft.asmext.processor;
 
 
-import org.omg.CORBA.SystemException;
 import ru.trolsoft.asmext.data.*;
 import ru.trolsoft.asmext.files.OutputFile;
 import ru.trolsoft.asmext.files.SourceFile;
@@ -10,6 +9,8 @@ import ru.trolsoft.asmext.utils.TokenString;
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
+
+import static ru.trolsoft.asmext.data.Block.*;
 
 public class Parser {
     Procedure currentProcedure;
@@ -20,9 +21,9 @@ public class Parser {
     Map<String, Variable> variables = new HashMap<>();
     Map<String, Constant> constants = new HashMap<>();
     Map<String, Alias> globalAliases = new HashMap<>();
-    Map<String, Label> dataLabels = new HashMap<>();
-    Map<String, Label> codeLabels = new HashMap<>();
-    Stack<Block> blocks = new Stack<>();
+    private Map<String, Label> dataLabels = new HashMap<>();
+    private Map<String, Label> codeLabels = new HashMap<>();
+    private Stack<Block> blocks = new Stack<>();
     boolean gcc;
     private Segment currentSegment;
     private boolean blockComment;
@@ -53,7 +54,7 @@ public class Parser {
         parseLine(new TokenString(line));
     }
 
-    void parseLine(TokenString line) throws SyntaxException {
+    private void parseLine(TokenString line) throws SyntaxException {
         lineNumber++;
         if (skipComment(line)) {
             return;
@@ -75,12 +76,8 @@ public class Parser {
                 endProcedure(line);
             } else if ("args".equals(name)) {
                 loadProcedureArgs(line);
-            } else if ("loop".equals(name)) {
-                processStartLoop(line);
-            } else if ("endloop".equals(name)) {
-                processEndLoop(line);
             } else if ("extern".equals(name)) {
-                processExtern(line, trimLine.substring(".extern".length()).trim());
+                processExtern(line);
             } else if ("equ".equalsIgnoreCase(name)) {
                 processEqu(line.toString(), trimLine.substring(".equ".length()).trim(), true);
             } else if ("set".equalsIgnoreCase(name)) {
@@ -88,6 +85,12 @@ public class Parser {
             } else {
                 processLine(line);
             }
+        } else if ("loop".equals(firstToken)) {
+            processStartLoop(line);
+        } else if ("if".equals(firstToken) && line.contains("{")) {
+            processStartIf(line);
+        } else if ("}".equals(firstToken)) {
+            processEndBlock(line);
         } else if ("#define".equals(firstToken)) {
             processDefine(line);
         } else if ("continue".equals(firstToken)) {
@@ -104,6 +107,7 @@ public class Parser {
     }
 
 
+
     private boolean skipComment(TokenString line) {
         // comments in gcc
         if (gcc && line.size() > 1 && "/".equals(line.getToken(0)) && "*".equals(line.getToken(1))) {
@@ -112,10 +116,7 @@ public class Parser {
             blockComment = false;
             return true;
         }
-        if (blockComment) {
-            return true;
-        }
-        return false;
+        return blockComment;
     }
 
     private void preload(SourceFile src) throws SyntaxException {
@@ -190,20 +191,24 @@ public class Parser {
     }
 
     private void processLine(TokenString line) throws SyntaxException {
+        resolveAliases(line);
+        try {
+            compiler.compile(line, output);
+        } catch (SyntaxException e) {
+            throw e.line(lineNumber);
+        }
+    }
+
+    private void resolveAliases(TokenString line) {
         for (int i = 0; i < line.size(); i++) {
             String token = line.getToken(i);
-            String nextToken = i < line.size()-1 ? line.getToken(i+1) : null;
+            String nextToken = i < line.size() - 1 ? line.getToken(i + 1) : null;
             Alias alias = ":".equals(nextToken) ? null : resolveProcAlias(token);
             if (alias != null) {
                 line.modifyToken(i, alias.register.toString());
             } else if (token.startsWith("@") && currentProcedure != null) {
                 line.modifyToken(i, resolveLocalLabel(token.substring(1)));
             }
-        }
-        try {
-            compiler.compile(line, output);
-        } catch (SyntaxException e) {
-            throw e.line(lineNumber);
         }
     }
 
@@ -239,7 +244,7 @@ public class Parser {
 
     private void endProcedure(TokenString src) throws SyntaxException {
         src.removeEmptyTokens();
-        if (src.size() != 2) {
+        if (src.getTokens().size() != 2) {
             error("extra characters in line");
         }
         if (currentProcedure == null) {
@@ -250,85 +255,85 @@ public class Parser {
     }
 
     private void processStartLoop(TokenString str) throws SyntaxException {
-        str.removeEmptyTokens();
-        if (":".equals(str.getLastToken())) {
-            str.removeLastToken();
+        resolveAliases(str);
+        Expression expr = buildExpression(str);
+
+        if (!expr.getLast().isOperator("{")) {
+            error("'{' expected");
         }
-        if (str.size() == 2) {
-            String label = (currentProcedure != null ? currentProcedure.name : "") + "__loop_" + lineNumber;
-            Block block = new Block(Block.TYPE_LOOP, null, lineNumber, label);
-            blocks.push(block);
-            output.add(block.getLabelStart() + ":");
-            return;
+        Expression argExpr = null;
+        if (expr.get(1).isOperator("(")) {
+            if (!expr.getLast(1).isOperator(")")) {
+                error("')' not found");
+            }
+            argExpr = expr.subExpression(2, expr.size() - 3);
+            if (argExpr.isEmpty()) {
+                argExpr = null;
+            }
+        } else if (expr.size() != 2) {
+            error("wrong loop syntax");
         }
-        // .loop (x>2)
-        if (str.size() < 4) {
-            error("expression expected");
-        }
-        if (!"(".equals(str.getToken(2)) || !")".equals(str.getLastToken())) {
-            error("expected ()");
-        }
-        str.removeFirstToken(); // .
-        str.removeFirstToken(); // loop
-        str.removeFirstToken(); // (
-        str.removeLastToken();  // )
-        String label = (currentProcedure != null ? currentProcedure.name : "") + "__" + str.getFirstToken() + "_" + lineNumber;
-        Block block = new Block(Block.TYPE_LOOP, str.getTokens(), lineNumber, label);
-        if (block.args.isEmpty()) {
-            error("loop parameter expected");
-        }
+        String name = argExpr != null ? argExpr.getFirst().asString() + "_" : "";
+        String label = (currentProcedure != null ? currentProcedure.name : "") + "__loop_" + name + lineNumber;
+        Block block = new Block(BLOCK_LOOP, argExpr, lineNumber, label);
         blocks.push(block);
-        String reg = block.args.get(0);
-        if (currentProcedure != null) {
-            Token resolve = currentProcedure.resolveVariable(reg);
-            if (resolve != null) {
-                reg = resolve.toString();
+
+        if (argExpr != null) {
+            Token reg = argExpr.getFirst();
+            if (!reg.isRegister()) {
+                error("register expected: " + reg);
             }
-        }
-        Alias alias = resolveProcAlias(reg);
-        if (alias != null) {
-            reg = alias.register.toString();
-        }
-        if (!ParserUtils.isRegister(reg)) {
-            error("register or alias expected: " + reg);
-        }
-        block.reg = reg;
-        if (block.args.size() > 1) {
-            if (!"=".equals(block.args.get(1)) || block.args.size() < 3) {
-                error("wrong expression");
-            }
-            String val = block.args.get(2);
-            if (currentProcedure != null) {
-                Token resolve = currentProcedure.resolveVariable(val);
-                if (resolve != null) {
-                    val = resolve.toString();
+            if (argExpr.size() > 1) {
+                if (!argExpr.get(1).isOperator("=")) {
+                    error("wrong loop argument expression");
+                }
+                try {
+                    new ExpressionsCompiler(this).compile(str, argExpr.copy(), output);
+                } catch (ExpressionsCompiler.CompileException e) {
+                    error("wrong argument");
                 }
             }
-            // TODO it's compiler code !!!
-            StringBuilder sb;
-            if (block.args.size() == 3 && ParserUtils.isRegister(val)) {
-                sb = output.appendCommand(str, "mov", reg, val);
-            } else {
-                sb = output.appendCommand(str, "ldi", reg, "");
-                for (int i = 2; i < block.args.size(); i++) {
-                    sb.append(block.args.get(i));
-                }
-            }
-            sb.append("\t\t; ").append(block.args.get(0));
         }
         output.add(block.getLabelStart() + ":");
     }
 
-
-    private void processEndLoop(TokenString line) throws SyntaxException {
-        line.removeEmptyTokens();
-        if (line.size() != 2) {
-            error("extra characters in line");
+    private void processStartIf(TokenString src) throws SyntaxException {
+        resolveAliases(src);
+        String label = (currentProcedure != null ? currentProcedure.name : "") + "__if_" + lineNumber;
+        Expression expr = buildExpression(src);
+        if (!expr.getLast().isOperator("{")) {
+            error("wrong if block syntax");
         }
-        getCurrentCycleBlock(); // call to check block type
-        Block block = blocks.pop();
-        if (block.args != null) {
-            output.appendCommand(line, "dec", block.reg).append("\t\t; ").append(block.args.get(0));
+        expr.set(expr.size() - 1, new Token(Token.TYPE_KEYWORD, "goto"));
+        expr.add(new Token(Token.TYPE_OTHER, label));
+        compiler.compileIfGoto(src, expr, output, true);
+        Block block = new Block(BLOCK_IF, expr, lineNumber, label);
+        blocks.push(block);
+    }
+
+    private void processEndBlock(TokenString line) throws SyntaxException {
+        line.removeEmptyTokens();
+        if (line.size() != 1) {
+            error("extra characters in line: " + line.getTokens());
+        }
+        if (blocks.isEmpty()) {
+            error("open bracket not found: '{'");
+        }
+        Block lastBlock = blocks.pop();
+        switch (lastBlock.type) {
+            case BLOCK_LOOP:
+                processEndLoop(line, lastBlock);
+                break;
+            case BLOCK_IF:
+                processEndIf(line, lastBlock);
+                break;
+        }
+    }
+
+    private void processEndLoop(TokenString line, Block block) {
+        if (block.expr != null) {
+            Token reg = block.expr.getFirst();
+            output.appendCommand(line, "dec", reg).append("\t\t; ").append(reg);
             output.appendCommand(line, "brne", block.getLabelStart());
         } else {
             output.appendCommand(line, "rjmp", block.getLabelStart());
@@ -336,6 +341,10 @@ public class Parser {
         if (block.getLabelEnd() != null) {
             output.add(block.getLabelEnd() + ":");
         }
+    }
+
+    private void processEndIf(TokenString line, Block block) {
+        output.add(block.getLabelStart() + ":");
     }
 
     private void processContinue(TokenString line) throws SyntaxException {
@@ -356,7 +365,7 @@ public class Parser {
         output.appendCommand(line, "rjmp", block.buildEndLabel());
     }
 
-    private void processExtern(TokenString line, String args) throws SyntaxException {
+    private void processExtern(TokenString line) throws SyntaxException {
         Expression expr = new Expression(line);
         if (expr.size() < 3) {
             error("wrong syntax");
@@ -399,7 +408,7 @@ public class Parser {
             }
             return;
         }
-        output.add(line);
+        output.add(line.toString());
     }
 
     private Procedure loadProcedureDefinition(Expression expr) throws SyntaxException {
@@ -600,7 +609,7 @@ public class Parser {
         }
     }
 
-    private void include(TokenString str) throws SystemException {
+    private void include(TokenString str) throws SyntaxException {
         StringBuilder arg = new StringBuilder();
         // TODO move this to TokenString
         for (int i = 0; i < str.size(); i++) {
@@ -624,8 +633,6 @@ public class Parser {
                     preloadLine(s);
                 }
             } catch (IOException e) {
-                e.printStackTrace();
-            } catch (SyntaxException e) {
                 e.printStackTrace();
             }
         }
@@ -712,33 +719,33 @@ public class Parser {
         return makeConstExpression(c);
     }
 
-    boolean isConstExpression(String expr) {
-        if (ParserUtils.isConstExpression(expr)) {
-            return true;
-        }
-        TokenString tokens = new TokenString(expr);
-        StringBuilder builder = new StringBuilder();
-        for (String s : tokens) {
-            if (isConstant(s)) {
-                s = makeConstExpression(s);
-            }
-            builder.append(s);
-        }
-        return ParserUtils.isConstExpression(builder.toString());
-    }
-
-    boolean isConstExpressionTokens(List<String> tokens, List<String> constants) {
-        StringBuilder builder = new StringBuilder();
-        for (String s : tokens) {
-            if (isConstant(s)) {
-                s = makeConstExpression(s);
-            } else if (constants != null && constants.contains(s)) {
-                s = "0";
-            }
-            builder.append(s);
-        }
-        return ParserUtils.isConstExpression(builder.toString());
-    }
+//    boolean isConstExpression(String expr) {
+//        if (ParserUtils.isConstExpression(expr)) {
+//            return true;
+//        }
+//        TokenString tokens = new TokenString(expr);
+//        StringBuilder builder = new StringBuilder();
+//        for (String s : tokens) {
+//            if (isConstant(s)) {
+//                s = makeConstExpression(s);
+//            }
+//            builder.append(s);
+//        }
+//        return ParserUtils.isConstExpression(builder.toString());
+//    }
+//
+//    boolean isConstExpressionTokens(List<String> tokens, List<String> constants) {
+//        StringBuilder builder = new StringBuilder();
+//        for (String s : tokens) {
+//            if (isConstant(s)) {
+//                s = makeConstExpression(s);
+//            } else if (constants != null && constants.contains(s)) {
+//                s = "0";
+//            }
+//            builder.append(s);
+//        }
+//        return ParserUtils.isConstExpression(builder.toString());
+//    }
 
     private void markConstAndVariables(Expression expr) {
         boolean constFound = false;
@@ -832,15 +839,15 @@ public class Parser {
         return blocks.get(blocks.size()-1);
     }
 
-    boolean isLastBlockIs(int type) {
-        Block last = getLastBlock();
-        return last != null && last.type == type;
-    }
 
-    private Block getCurrentCycleBlock() throws SyntaxException {
-        if (!isLastBlockIs(Block.TYPE_LOOP)) {
-            error(".loop not found");
+    Block getCurrentCycleBlock() throws SyntaxException {
+        for (int i = blocks.size()-1; i >= 0; i--) {
+            Block block = blocks.get(i);
+            if (block.type == BLOCK_LOOP) {
+                return block;
+            }
         }
-        return getLastBlock();
+        error(".loop not found");
+        return null;
     }
 }

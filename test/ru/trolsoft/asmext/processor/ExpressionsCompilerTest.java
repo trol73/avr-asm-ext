@@ -106,11 +106,19 @@ class ExpressionsCompilerTest {
         test(ec, ta("X", "\t", "--"), "sbiw\tXL, 1");
         test(ec, ta("Y", "\t", "-=", "2"), "sbiw\tYL, 2");
         test(ec, ta("Z", "\t", "+=", "10"), "adiw\tZL, 10");
+        test(ec, ta("Z", "\t", "+=", "0x0380"), "subi\tZL, -0x80\nsbci\tZH, -0x03");
+
+        //    r29.r28 += 0x0380
+        //    subi	r28, -0x80 ; '€'
+        //    sbci	r29, -3	; 'ý'
+
         test(ec, ta("Z", "\t", "+=", "1", "+", "1"), "adiw\tZL, (1+1)");
         test(ec, ta("Z", "\t", "+=", "(", "1", "+", "1", ")"), "adiw\tZL, (1+1)");
         test(ec, ta("X", "\t", "+=", "2", "+", "1"), "adiw\tXL, (2+1)");
         test(ec, ta("Z", "\t", "+=", "r21", ".", "r24"), "add\tZL, r24\nadc\tZH, r21");
         test(ec, ta("Y", "\t", "-=", "r21", ".", "r24"), "sub\tYL, r24\nsbc\tYH, r21");
+
+        //        testLine("if (r16[2]) Z += 100", "sbrc\tr16, 2\nadiw\tZL, 1");
     }
 
 
@@ -162,6 +170,8 @@ class ExpressionsCompilerTest {
         test(ec, ta("r21", ".", "r20", "-=", "var_ptr"), "subi\tr20, LOW(var_ptr)\nsbci\tr21, HIGH(var_ptr)");
         test(ec, ta("r2", ".", "r1", "-=", "Z"), "sub\tr1, ZL\nsbc\tr2, ZH");
         test(ec, ta("r2", ".", "r1", "-=", "ZH.ZL"), "sub\tr1, ZL\nsbc\tr2, ZH");
+
+        test(ec, ta("r2", ".", "r1", "+=", "0x1234"), "subi\tr1, -0x34\nsbci\tr2, -0x12");
     }
 
     @Test
@@ -333,6 +343,11 @@ class ExpressionsCompilerTest {
     }
 
     @Test
+    void testAssignAndShift() throws CompileException {
+        test("r16 = r18 << 3", "mov\tr16, r18\nlsl\tr16\nlsl\tr16\nlsl\tr16");
+    }
+
+    @Test
     void testArrayPortsRead() throws CompileException {
         test("r0 = io[PINC]", "in\tr0, PINC");
     }
@@ -459,6 +474,15 @@ class ExpressionsCompilerTest {
     void testMoveInverseRegBitToIo() throws CompileException {
         test("io[PORTC].0 = !r16[4]", "sbrs\tr16, 4\nsbi\tPORTC, 0\nsbrc\tr16, 4\ncbi\tPORTC, 0");
     }
+
+//    @Test
+//    void testMoveFlagToIo() {
+//        test("io[PORTC].3 = !F_CARRY", );
+//        brcs .+4
+//        cbi PORTC, 3
+//        rjmp .+4
+//        sbi PORTC, 3
+//    }
 
 
     @Test

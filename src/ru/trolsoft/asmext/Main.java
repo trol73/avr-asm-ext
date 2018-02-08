@@ -101,15 +101,6 @@ adc r0, rmp
         if (rmp == cCR || rmp == cLF) goto @NoPar
 
 
-	if (!io[UCSRA].UDRE) goto @wait
-	;sbis	UCSRA, UDRE ; wait for empty char
-	;rjmp	@wait
-
-
-.loop (r1 = r18 = 100)
-
-.loop
-.endloop
 
 	rmp = BYTE1(100000000) ; check overflow
 	cp rRes1, rmp
@@ -135,6 +126,11 @@ if (r2.r1 < ZH.ZL) goto @2 ; ended subtraction
 
 
 
+if () {
+} else {
+}
+
+
 
 .MACRO swap_regs
     push    $1
@@ -155,20 +151,5 @@ sts $0, $2
 
 
 
- IF (reg < 32) goto @1
- IF (reg < 32):
-    goto @1
- ENDIF
-
- IF (sreg.s)
- ENDIF
-
- IF (!sreg.z)
- ENDIF
-                                                                unsigned            signed
-
-.if
-.else
-.endif
 
  */

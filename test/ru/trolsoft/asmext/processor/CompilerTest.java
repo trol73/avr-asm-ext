@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class CompilerTest {
     Parser parser = new Parser();
-    ru.trolsoft.asmext.processor.Compiler compiler = new ru.trolsoft.asmext.processor.Compiler(parser);
+    Compiler compiler = new Compiler(parser);
 
 
     private static String strip(String s) {
@@ -171,7 +171,7 @@ class CompilerTest {
         parser = new Parser();
         compiler = new Compiler(parser);
 
-        parser.parseLine(".loop (r20 = 1)");
+        parser.parseLine("loop (r20 = 1) {");
         testLine("if (!r16[2]) continue", "sbrs\tr16, 2\nrjmp\t" + parser.getLastBlock().getLabelStart());
     }
 
@@ -180,8 +180,17 @@ class CompilerTest {
         parser = new Parser();
         compiler = new Compiler(parser);
 
-        parser.parseLine(".loop (r20 = 1)");
+        parser.parseLine("loop (r20 = 1) {");
         testLine("if (!r16[2]) break", "sbrs\tr16, 2\nrjmp\t" + parser.getLastBlock().buildEndLabel());
+    }
+
+    @Test
+    void testIfRegisterBitSetExpression() throws SyntaxException {
+        parser = new Parser();
+        compiler = new Compiler(parser);
+
+        testLine("if (r16[2]) Z++", "sbrc\tr16, 2\nadiw\tZL, 1");
+        testLine("if (r16[2]) r16 |= 0x10", "sbrc\tr16, 2\nori\tr16, 0x10");
     }
 
     @Test

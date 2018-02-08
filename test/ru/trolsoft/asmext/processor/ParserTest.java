@@ -97,63 +97,75 @@ class ParserTest {
     void testLoop() throws SyntaxException {
         parser = new Parser();
         test(a(
-                ".loop(r24 = 1):",
-                ".endloop"
+                "loop(r24 = 1) {",
+                "}"
                 ), a (
                 "ldi r24, 1",
-                    "__r24_1:",
+                    "__loop_r24_1:",
                     "dec r24",
-                    "brne __r24_1"
+                    "brne __loop_r24_1"
                 )
         );
         parser = new Parser();
         test(a(
-                ".loop(r24 = r0):",
-                ".endloop"
+                "loop(r24 = r0) {",
+                "}"
                 ), a (
                 "mov r24, r0",
-                "__r24_1:",
+                "__loop_r24_1:",
                 "dec r24",
-                "brne __r24_1"
+                "brne __loop_r24_1"
                 )
         );
         parser = new Parser();
         test(a(
-                ".loop(r24 = 1+(1+1)):",
-                ".endloop"
+                "loop(r24 = 1+(1+1)) {",
+                "}"
                 ), a (
                 "ldi r24, 1+(1+1)",
-                "__r24_1:",
+                "__loop_r24_1:",
                 "dec r24",
-                "brne __r24_1"
+                "brne __loop_r24_1"
                 )
         );
 
         parser = new Parser();
         test(a(
                 ".use r24 as rmp",
-                ".loop(rmp = 1+(1+1)):",
-                ".endloop"
+                "loop(rmp = 1+(1+1)) {",
+                "}"
                 ), a (
                  "",
                 "ldi r24, 1+(1+1)",
-                "__rmp_2:",
+                "__loop_r24_2:",
                 "dec r24",
-                "brne __rmp_2"
+                "brne __loop_r24_2"
                 )
         );
 
+        parser = new Parser(true);
+        parser.parseLine("#define FONT_SMALL_HEIGHT 10");
+        test(a(
+                "loop(r21 = FONT_SMALL_HEIGHT+1) {",
+                "} ; r21"
+                ), a (
+                "ldi r21, 10+1",
+                "__loop_r21_2:",
+                "dec r21",
+                "brne __loop_r21_2"
+                )
+        );
     }
 
     @Test
-    void testLoopError() {
+    void testWrongBlockrror() {
         parser = new Parser();
         boolean error;
         try {
-            test(a(".endloop"), a(""));
+            test(a("}"), a(""));
             error = false;
         } catch (SyntaxException e) {
-            assertEquals(e.getMessage(), ".loop not found");
+            assertEquals(e.getMessage(), "open bracket not found: '{'");
             error = true;
         }
         assertTrue(error);
@@ -163,15 +175,15 @@ class ParserTest {
     void testLoopContinue() throws SyntaxException {
         parser = new Parser();
         test(a(
-                ".loop(r24 = 10):",
+                "loop(r24 = 10) {",
                 "continue",
-                ".endloop"
+                "}"
             ), a (
                 "ldi r24, 10",
-                "__r24_1:",
-                "rjmp __r24_1",
+                "__loop_r24_1:",
+                "rjmp __loop_r24_1",
                 "dec r24",
-                "brne __r24_1"
+                "brne __loop_r24_1"
                 )
         );
     }
@@ -180,9 +192,9 @@ class ParserTest {
     void testInfiniteLoop() throws SyntaxException {
         parser = new Parser();
         test(a(
-                ".loop:",
+                "loop {",
                 "break",
-                ".endloop"
+                "}"
             ), a (
                 "__loop_1:",
                 "rjmp __loop_1_end",
@@ -555,5 +567,22 @@ class ParserTest {
         parser.parseLine(".endproc");
     }
 
+
+    @Test
+    void testParseIfBlock() throws SyntaxException {
+        Parser parser = new Parser();
+        parser.parseLine("if (r21 == 5) { ; comment");
+        parser.parseLine("r21 = 0");
+        parser.parseLine("cli");
+        parser.parseLine("}");
+
+        assertEquals(6, parser.getOutput().size());
+        assertEquals("; if (r21 == 5) { ; comment", parser.getOutput().get(0));
+        assertEquals("cpi\tr21, 5\t\t; comment", parser.getOutput().get(1));
+        assertEquals("brne\t__if_1\t\t; comment", parser.getOutput().get(2));
+        assertEquals("clr\tr21", parser.getOutput().get(3));
+        assertEquals("cli", parser.getOutput().get(4));
+        assertEquals("__if_1:", parser.getOutput().get(5));
+    }
 
 }

@@ -5,9 +5,8 @@ import ru.trolsoft.asmext.data.Variable.Type;
 import ru.trolsoft.asmext.files.OutputFile;
 import ru.trolsoft.asmext.utils.TokenString;
 
-import java.util.List;
-
-import static ru.trolsoft.asmext.processor.AsmInstr.*;
+import static ru.trolsoft.asmext.processor.AsmInstr.CLEAR_FLAG_MAP;
+import static ru.trolsoft.asmext.processor.AsmInstr.SET_FLAG_MAP;
 
 class ExpressionsCompiler {
 
@@ -124,10 +123,13 @@ e.printStackTrace();
                     addPair(src, dest, operation, expr.get(0), out);
                 } else if (dest.isRegGroup() && expr.size() == 3) {
                     Token arg = expr.get(2);
-                    if (!arg.isRegGroup(dest.size())) {
+                    if (arg.isRegGroup(dest.size())) {
+                        addRegGroup(src, dest, operation, arg, out);
+                    } else if (arg.isAnyConst()) {
+                        addReg(src, dest, operation, arg, out);
+                    } else {
                         unexpectedExpressionError();
                     }
-                    addRegGroup(src, dest, operation, arg, out);
                 } else if (dest.isRegister() && expr.size() == 3) {
                     addReg(src, dest, operation, expr.get(2), out);
                 } else {
@@ -316,6 +318,18 @@ e.printStackTrace();
                     out.appendCommand(src, "ori", dest, arg.wrapToBrackets());
                 } else if (arg.isRegister()) {
                     out.appendCommand(src, "or", dest, arg);
+                } else {
+                    wrongArgumentError(arg);
+                }
+                break;
+            case ">>":
+            case "<<":
+                if (arg.isNumber()) {
+                    int cnt = arg.getNumberValue();
+                    String cmd = "<<".equals(operation) ? "lsl" : "lsr";
+                    for (int i = 0; i < cnt; i++) {
+                        out.appendCommand(src, cmd, dest);
+                    }
                 } else {
                     wrongArgumentError(arg);
                 }
@@ -729,12 +743,13 @@ e.printStackTrace();
 
     private void addReg(TokenString src, Token dest, Token operation, Token argument, OutputFile out) throws CompileException {
         boolean isAdd = operation.isOperator("+=");
-        if (argument.isRegister()) {
+        if (dest.isRegister() && argument.isRegister()) {
             String instruction = isAdd ? "add" : "sub";
             out.appendCommand(src, instruction, dest, argument);
         } else if (dest.isPair()) {
-            String instruction = isAdd ? "adiw" : "sbiw";
-            if (argument.isAnyConst()) {
+            boolean shortArg = argument.isNumber() && Math.abs(argument.getNumberValue()) <= 63;
+            if (shortArg && argument.isAnyConst()) {
+                String instruction = isAdd ? "adiw" : "sbiw";
                 out.appendCommand(src, instruction, dest.getPairLow(), argument.wrapToBrackets());
             } else if (getVarType(argument) == Type.POINTER) {
                 String argLo = loVarPtr(argument, Type.POINTER, isAdd);
@@ -758,10 +773,25 @@ e.printStackTrace();
                 unexpectedExpressionError(argument);
             }
         } else if (argument.isAnyConst()) {
-            if (isAdd) {
-                out.appendCommand(src, "subi", dest, argument.getNegativeExpr());
+            if (dest.isRegister()) {
+                if (isAdd) {
+                    out.appendCommand(src, "subi", dest, argument.getNegativeExpr());
+                } else {
+                    out.appendCommand(src, "subi", dest, argument.wrapToBrackets());
+                }
+            } else if (dest.isRegGroup()) {
+                // TODO optimize it for pairs with ADIW/SBIW
+                String op = isAdd ? "-" : "";
+                out.appendCommand(src, "subi", dest.getReg(dest.size()-1), op+numByte(argument, 0));
+
+                for (int i = dest.size()-2; i >= 0; i--) {
+                    int byteOffset = dest.size() - i - 1;
+                    out.appendCommand(src, "sbci", dest.getReg(i), op+numByte(argument, byteOffset));
+                }
+            } else if (dest.isPair()) {
+                addPair(src, dest, operation, argument, out);
             } else {
-                out.appendCommand(src, "subi", dest, argument.wrapToBrackets());
+                unexpectedExpressionError(argument);
             }
         } else {
             unexpectedExpressionError(argument);
@@ -779,7 +809,14 @@ e.printStackTrace();
             return;
         }
         if (arg.isAnyConst()) {
-            out.appendCommand(src, add ? "adiw" : "sbiw", dest.getPairLow(), arg.wrapToBrackets());
+            // TODO calculate numbers
+            boolean shortArg = !arg.isNumber() || Math.abs(arg.getNumberValue()) <= 63;
+            if (shortArg) {
+                out.appendCommand(src, add ? "adiw" : "sbiw", dest.getPairLow(), arg.wrapToBrackets());
+            } else {
+                out.appendCommand(src, "subi", dest.getPairLow(), "-"+loByte(arg));
+                out.appendCommand(src, "sbci", dest.getPairHigh(), "-"+hiByte(arg));
+            }
         } else if (arg.isPair() || arg.isRegGroup()) {
             out.appendCommand(src, add ? "add" : "sub", dest.getPairLow(), arg.getPairLow());
             out.appendCommand(src, add ? "adc" : "sbc", dest.getPairHigh(), arg.getPairHigh());

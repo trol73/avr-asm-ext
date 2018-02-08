@@ -1,34 +1,36 @@
 package ru.trolsoft.asmext.data;
 
+import ru.trolsoft.asmext.processor.Expression;
+
 import java.util.ArrayList;
 import java.util.List;
 
 public class Block {
-    public static final int TYPE_LOOP = 1;
+    public static final int BLOCK_LOOP = 1;
+    public static final int BLOCK_IF = 2;
 
     public final int type;
-    public final List<String> args;
-    public final int beginLine;
-    public String reg;
+    public final int beginLineNumber;
+    public final Expression expr;
     private String labelStart;
     private String labelEnd;
 
-    public Block(int type, List<String> args, int beginLine) {
+    public Block(int type, Expression expr, int beginLine) {
         this.type= type;
-        this.args = args;
-        this.beginLine = beginLine;
+        this.expr = expr;
+        this.beginLineNumber = beginLine;
     }
 
-    public Block(int type, List<String> args, int beginLine, String labelStart) {
+    public Block(int type, Expression expr, int beginLine, String labelStart) {
         this.type= type;
-        this.args = args;
-        this.beginLine = beginLine;
+        this.expr = expr;
+        this.beginLineNumber = beginLine;
         this.labelStart = labelStart;
     }
 
-    public Block(int type, String[] args, int beginLine) {
-        this(type, buildList(args), beginLine);
-    }
+//    public Block(int type, String[] args, int beginLine) {
+//        this(type, buildList(args), beginLine);
+//    }
 
     private static List<String> buildList(String args[]) {
         List<String> result = new ArrayList<>();
