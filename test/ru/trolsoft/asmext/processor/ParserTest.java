@@ -585,4 +585,36 @@ class ParserTest {
         assertEquals("__if_1:", parser.getOutput().get(5));
     }
 
+    @Test
+    void testParseIfElseBlocks() throws SyntaxException {
+        Parser parser = new Parser();
+        parser.parseLine("if (r21 == 5) {");
+        parser.parseLine("r21 = 0");
+        parser.parseLine("cli");
+        parser.parseLine("} else {");
+        parser.parseLine("r21 = 5");
+        parser.parseLine("sei");
+        parser.parseLine("}");
+
+
+        assertEquals(10, parser.getOutput().size());
+        assertEquals("; if (r21 == 5) {", parser.getOutput().get(0));
+        assertEquals("cpi\tr21, 5", parser.getOutput().get(1));
+        assertEquals("brne\t__if_1", parser.getOutput().get(2));
+        assertEquals("clr\tr21", parser.getOutput().get(3));
+        assertEquals("cli", parser.getOutput().get(4));
+        assertEquals("rjmp\t__if_else_4", parser.getOutput().get(5));
+        assertEquals("__if_1:", parser.getOutput().get(6));
+        assertEquals("ldi\tr21, 5", parser.getOutput().get(7));
+        assertEquals("sei", parser.getOutput().get(8));
+        assertEquals("__if_else_4:", parser.getOutput().get(9));
+
+//        if (!cond) goto @le     | if
+//        e1                      | if
+//        rjmp @lf                | else
+//        @le:                    | else
+//        e2                      | else
+//        @lf:                    | else
+    }
+
 }

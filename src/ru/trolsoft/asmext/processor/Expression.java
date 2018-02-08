@@ -22,7 +22,7 @@ public class Expression implements Iterable<Token> {
         };
         OPERATORS = new HashSet<>(Arrays.asList(operators));
         String[] keywords = {
-                "if", "goto"
+                "if", "else", "goto", "loop", "continue", "break"
         };
         KEYWORDS = new HashSet<>(Arrays.asList(keywords));
         String[] flags = {

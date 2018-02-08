@@ -89,6 +89,8 @@ public class Parser {
             processStartLoop(line);
         } else if ("if".equals(firstToken) && line.contains("{")) {
             processStartIf(line);
+        } else if ("}".equals(firstToken) && line.contains("{") && line.contains("else")) { // TODO
+            processStartElse(line);
         } else if ("}".equals(firstToken)) {
             processEndBlock(line);
         } else if ("#define".equals(firstToken)) {
@@ -311,6 +313,24 @@ public class Parser {
         blocks.push(block);
     }
 
+    private void processStartElse(TokenString src) throws SyntaxException {
+        Expression expr = new Expression(src);
+        if (expr.size() != 3 || !expr.getFirst().isOperator("}") || !expr.getLast().isOperator("{")
+                || !expr.get(1).isKeyword("else")) {
+            error("wrong else block syntax");
+        }
+        Block prevBlock = getLastBlock();
+        if (prevBlock == null || prevBlock.type != BLOCK_IF) {
+            error("if block not found");
+        }
+        blocks.pop();
+        String label = (currentProcedure != null ? currentProcedure.name : "") + "__if_else_" + lineNumber;
+        Block block = new Block(BLOCK_ELSE, null, lineNumber, label);
+        blocks.push(block);
+        output.appendCommand(src, "rjmp", block.getLabelStart());
+        output.add(prevBlock.getLabelStart() + ":");
+    }
+
     private void processEndBlock(TokenString line) throws SyntaxException {
         line.removeEmptyTokens();
         if (line.size() != 1) {
@@ -325,6 +345,7 @@ public class Parser {
                 processEndLoop(line, lastBlock);
                 break;
             case BLOCK_IF:
+            case BLOCK_ELSE:
                 processEndIf(line, lastBlock);
                 break;
         }

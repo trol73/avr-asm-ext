@@ -126,9 +126,19 @@ if (r2.r1 < ZH.ZL) goto @2 ; ended subtraction
 
 
 
-if () {
+if (cond) {
+    e1
 } else {
+    e2
 }
+
+if (!cond) goto @le     | if
+    e1                  | if
+    rjmp @lf            | else
+@le:                    | else
+    e2                  | else
+@lf:                    | else
+
 
 
 
