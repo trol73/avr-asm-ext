@@ -218,6 +218,27 @@ class CompilerTest {
         testLine("if (!io[SPSR].SPIF) goto loop", "sbis\tSPSR, SPIF\nrjmp\tloop");
     }
 
+    @Test
+    void testRegisterBitConst() throws SyntaxException {
+        parser = new Parser();
+        parser.parseLine(".EQU bEdge = 4");
+        compiler = new Compiler(parser);
+        testLine("r10[bEdge] = 1", "sbr\tr10, 1<<bEdge");
+    }
+
+    @Test
+    void testRegBitWrongOperation() {
+        boolean error;
+        try {
+            testLine("r10[0] |= 1", "");
+            error = false;
+        } catch (SyntaxException e) {
+            error = true;
+        }
+        assertTrue(error);
+
+    }
+
 
 //    @Test
 //    void testLoopIfBreak() throws SyntaxException {

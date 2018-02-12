@@ -47,6 +47,7 @@ r1 = keyboard_clk->PIN
 r1 = PIN[keyboard_clk]
 
 
+r16_mask[1] = 1
 
 
 wait_clk0_loop_%:

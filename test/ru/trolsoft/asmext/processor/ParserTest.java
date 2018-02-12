@@ -608,13 +608,6 @@ class ParserTest {
         assertEquals("ldi\tr21, 5", parser.getOutput().get(7));
         assertEquals("sei", parser.getOutput().get(8));
         assertEquals("__if_else_4:", parser.getOutput().get(9));
-
-//        if (!cond) goto @le     | if
-//        e1                      | if
-//        rjmp @lf                | else
-//        @le:                    | else
-//        e2                      | else
-//        @lf:                    | else
     }
 
 }

@@ -475,6 +475,27 @@ class ExpressionsCompilerTest {
         test("io[PORTC].0 = !r16[4]", "sbrs\tr16, 4\nsbi\tPORTC, 0\nsbrc\tr16, 4\ncbi\tPORTC, 0");
     }
 
+    @Test
+    void testSetRegisterBit() throws CompileException {
+        test("r16[0] = 1", "sbr\tr16, 0b00000001");
+        test("r16[7] = 1", "sbr\tr16, 0b10000000");
+    }
+
+    @Test
+    void testClearRegisterBit() throws CompileException {
+        test("r16[0] = 0", "cbr\tr16, 0b00000001");
+        test("r16[7] = 0", "cbr\tr16, 0b10000000");
+    }
+
+    @Test
+    void testSetRegisterBitError()  {
+        assertTrue(hasError("r16[8] = 1"));
+        assertTrue(hasError("r16[0] = 2"));
+//        assertTrue(hasError("z16[0] = 1"));
+    }
+
+
+
 //    @Test
 //    void testMoveFlagToIo() {
 //        test("io[PORTC].3 = !F_CARRY", );

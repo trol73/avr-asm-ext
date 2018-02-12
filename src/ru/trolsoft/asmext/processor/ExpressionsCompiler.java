@@ -10,6 +10,8 @@ import static ru.trolsoft.asmext.processor.AsmInstr.SET_FLAG_MAP;
 
 class ExpressionsCompiler {
 
+    private static final String[] STRING_OF_ZERO = {"", "0", "00", "000", "0000", "00000", "000000", "0000000", "00000000", "000000000", "0000000000"};
+
 
     Parser parser;
 
@@ -102,6 +104,8 @@ e.printStackTrace();
                     moveToArray(src, dest, expr, out);
                 } else if (dest.isFlag()) {
                     moveToFlag(src, dest, expr, out);
+                } else if (dest.isRegisterBit()) {
+                    moveToRegBit(src, dest, expr, out);
                 } else {
                     unexpectedExpressionError();
                 }
@@ -148,7 +152,7 @@ e.printStackTrace();
             case "|=":
                 if (expr.size() != 3) {
                     unsupportedOperationError();
-                } else if (expr.size() == 3) {
+                } else if (dest.isRegister()) {// (expr.size() == 3) {
                     orReg(src, dest, expr.get(2), out);
                 } else {
                     unexpectedExpressionError();
@@ -610,6 +614,7 @@ e.printStackTrace();
             Token bitReg = expr.get(4);
             Token bitToken = expr.get(2);
             checkBitNumber(bitToken);
+            checkBitNumber(bitReg);
 
             out.appendCommand(src, "sbrs", bitReg.asString(), bitReg.getBitIndex().asString());
             out.appendCommand(src, "cbi", arrayIndexToPort(array), bitToken.asString());
@@ -620,6 +625,7 @@ e.printStackTrace();
             Token bitReg = expr.get(5);
             Token bitToken = expr.get(2);
             checkBitNumber(bitToken);
+            checkBitNumber(bitReg);
             out.appendCommand(src, "sbrs", bitReg.asString(), bitReg.getBitIndex().asString());
             out.appendCommand(src, "sbi", arrayIndexToPort(array), bitToken.asString());
             out.appendCommand(src, "sbrc", bitReg.asString(), bitReg.getBitIndex().asString());
@@ -629,10 +635,45 @@ e.printStackTrace();
         }
     }
 
+    private void moveToRegBit(TokenString src, Token dest, Expression expr, OutputFile out) throws CompileException {
+        if (expr.size() == 1 && expr.getFirst().isNumber()) {
+            Token val = expr.getFirst();
+            checkBitNumber(dest);
+            Token bitIndex = dest.getBitIndex();
+            String bitMask = dest.getBitIndex().isNumber() ? binByteStr(1 << bitIndex.getNumberValue()) : "1<<"+bitIndex.asString();
+            if (val.getNumberValue() == 1) {
+                out.appendCommand(src, "sbr", dest, bitMask);
+            } else if (val.getNumberValue() == 0) {
+                out.appendCommand(src, "cbr", dest, bitMask);
+            } else {
+                unsupportedOperationError("1 or 0 expected");
+            }
+        } else {
+            unsupportedOperationError();
+        }
+    }
 
     private void checkBitNumber(Token token) throws CompileException {
         if (token.isNumber()) {
             int bit = token.getNumberValue();
+            if (bit < 0 || bit > 7) {
+                unsupportedOperationError("wrong bit number");
+            }
+        } else if (token.isRegisterBit()) {
+            Token index = token.getBitIndex();
+            int bit;
+            if (index.isAnyConst() && parser.getConstant(index.asString()) != null) {
+                String val = parser.getConstant(index.asString()).value;
+                if (!ParserUtils.isNumber(val)) {
+                    unsupportedOperationError("unexpected value for bit index: " + index);
+                }
+                bit = ParserUtils.parseValue(val);
+            } else if (index.isNumber()) {
+                bit = index.getNumberValue();
+            } else {
+                unsupportedOperationError("unexpected value for bit index: " + index);
+                return;
+            }
             if (bit < 0 || bit > 7) {
                 unsupportedOperationError("wrong bit number");
             }
@@ -645,6 +686,12 @@ e.printStackTrace();
     private static String hexByteStr(int val) {
         String s = Integer.toHexString(val);
         return s.length() == 1 ? "0x0" + s : "0x" + s;
+    }
+
+    private static String binByteStr(int val) {
+        String s = Integer.toBinaryString(val);
+        s = STRING_OF_ZERO[8 - s.length()] + s;
+        return "0b" + s;
     }
 
 
