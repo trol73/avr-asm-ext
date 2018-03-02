@@ -9,6 +9,7 @@ public class Block {
     public static final int BLOCK_LOOP = 1;
     public static final int BLOCK_IF = 2;
     public static final int BLOCK_ELSE = 3;
+    public static final int BLOCK_BYTES = 4;
 
     public final int type;
     public final int beginLineNumber;

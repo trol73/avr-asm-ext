@@ -38,7 +38,7 @@ class Compiler {
                 compileCall(src, parser.buildExpression(src), out);
                 break;
             case "if":
-                if (compileIfGoto(src, parser.buildExpression(src), out)) {
+                if (compileIf(src, parser.buildExpression(src), out)) {
                     break;
                 }
             default:
@@ -53,7 +53,7 @@ class Compiler {
         }
         Token procedureName = expr.get(1);
         Procedure procedure = parser.procedures.get(procedureName.asString());
-        if (expr.size() == 2) {
+        if (procedure == null || expr.size() == 2) {
             return procedure;
         }
         if (expr.size() == 3) {
@@ -164,11 +164,12 @@ class Compiler {
     }
 
 
-    private boolean compileIfGoto(TokenString src, Expression expr, OutputFile out) throws SyntaxException {
-        return compileIfGoto(src, expr, out, false);
+    private boolean compileIf(TokenString src, Expression expr, OutputFile out) throws SyntaxException {
+        // if (a || b || c) action -> if (a) action, if (b) action, if (c) action
+        return compileIf(src, expr, out, false);
     }
 
-    boolean compileIfGoto(TokenString src, Expression expr, OutputFile out, boolean inverse) throws SyntaxException {
+    boolean compileIf(TokenString src, Expression expr, OutputFile out, boolean inverse) throws SyntaxException {
         checkMinLength(expr, 5);
         boolean signed;
         Token t = expr.get(1);

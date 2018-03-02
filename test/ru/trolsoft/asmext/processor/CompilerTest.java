@@ -236,7 +236,14 @@ class CompilerTest {
             error = true;
         }
         assertTrue(error);
+    }
 
+    @Test
+    void testEqu() throws SyntaxException {
+        parser = new Parser(false);
+        parser.parseLine(".EQU PORT_VAL = 1<<4");
+        compiler = new Compiler(parser);
+        testLine("r16 = PORT_VAL", "ldi\tr16, PORT_VAL");
     }
 
 

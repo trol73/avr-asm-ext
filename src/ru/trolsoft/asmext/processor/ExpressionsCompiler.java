@@ -381,6 +381,8 @@ e.printStackTrace();
         } else if (arg.isArray()) {
             moveFromArray(src, destReg, arg, out);
         } else {
+            // TODO
+            //out.appendCommand(src, "ldi", destReg, arg);
             unexpectedExpressionError(arg);
         }
     }
@@ -737,9 +739,9 @@ e.printStackTrace();
             return negative ? "lo8(-(" + name + "))" : "lo8(" + name + ")";
         } else {
             if (type == Type.POINTER) {
-                return negative ? "-LOW(" + name + ")" : "LOW(" + name + ")";
+                return negative ? "LOW(-" + name + ")" : "LOW(" + name + ")";
             } else if (type == Type.PRGPTR) {
-                return negative ? "-LOW(2*" + name + ")" : "LOW(2*" + name + ")";
+                return negative ? "LOW(-2*" + name + ")" : "LOW(2*" + name + ")";
             } else {
                 throw new RuntimeException("unexpected pointer type");
             }
@@ -751,9 +753,9 @@ e.printStackTrace();
             return negative ? "hi8(-(" + name + "))" : "hi8(" + name + ")";
         } else {
             if (type == Type.POINTER) {
-                return negative ? "-HIGH(" + name + ")" : "HIGH(" + name + ")";
+                return negative ? "HIGH(-" + name + ")" : "HIGH(" + name + ")";
             } else if (type == Type.PRGPTR) {
-                return negative ? "-HIGH(2*" + name + ")" : "HIGH(2*" + name + ")";
+                return negative ? "HIGH(-2*" + name + ")" : "HIGH(2*" + name + ")";
             } else {
                 throw new RuntimeException("unexpected pointer type");
             }

@@ -164,9 +164,9 @@ class ExpressionsCompilerTest {
         test(ec, ta("r21", ".", "r20", "-=", "var_ptr"), "subi\tr20, lo8(var_ptr)\nsbci\tr21, hi8(var_ptr)");
 
         parser.gcc = false;
-        test(ec, ta("r21", ".", "r20", "+=", "var_prgptr"), "subi\tr20, -LOW(2*var_prgptr)\nsbci\tr21, -HIGH(2*var_prgptr)");
+        test(ec, ta("r21", ".", "r20", "+=", "var_prgptr"), "subi\tr20, LOW(-2*var_prgptr)\nsbci\tr21, HIGH(-2*var_prgptr)");
         test(ec, ta("r21", ".", "r20", "-=", "var_prgptr"), "subi\tr20, LOW(2*var_prgptr)\nsbci\tr21, HIGH(2*var_prgptr)");
-        test(ec, ta("r21", ".", "r20", "+=", "var_ptr"), "subi\tr20, -LOW(var_ptr)\nsbci\tr21, -HIGH(var_ptr)");
+        test(ec, ta("r21", ".", "r20", "+=", "var_ptr"), "subi\tr20, LOW(-var_ptr)\nsbci\tr21, HIGH(-var_ptr)");
         test(ec, ta("r21", ".", "r20", "-=", "var_ptr"), "subi\tr20, LOW(var_ptr)\nsbci\tr21, HIGH(var_ptr)");
         test(ec, ta("r2", ".", "r1", "-=", "Z"), "sub\tr1, ZL\nsbc\tr2, ZH");
         test(ec, ta("r2", ".", "r1", "-=", "ZH.ZL"), "sub\tr1, ZL\nsbc\tr2, ZH");
@@ -261,8 +261,8 @@ class ExpressionsCompilerTest {
         test(ec, ta("Z", "-=", "pv"), "subi\tZL, lo8(pv)\n" +
                 "sbci\tZH, hi8(pv)");
         parser.gcc = false;
-        test(ec, ta("Z", "+=", "pv"), "subi\tZL, -LOW(pv)\n" +
-                "sbci\tZH, -HIGH(pv)");
+        test(ec, ta("Z", "+=", "pv"), "subi\tZL, LOW(-pv)\n" +
+                "sbci\tZH, HIGH(-pv)");
         test(ec, ta("Z", "-=", "pv"), "subi\tZL, LOW(pv)\n" +
                 "sbci\tZH, HIGH(pv)");
 
@@ -272,8 +272,8 @@ class ExpressionsCompilerTest {
         test(ec, ta("Z", "-=", "ppv"), "subi\tZL, lo8(ppv)\n" +
                 "sbci\tZH, hi8(ppv)");
         parser.gcc = false;
-        test(ec, ta("Z", "+=", "ppv"), "subi\tZL, -LOW(2*ppv)\n" +
-                "sbci\tZH, -HIGH(2*ppv)");
+        test(ec, ta("Z", "+=", "ppv"), "subi\tZL, LOW(-2*ppv)\n" +
+                "sbci\tZH, HIGH(-2*ppv)");
         test(ec, ta("Z", "-=", "ppv"), "subi\tZL, LOW(2*ppv)\n" +
                 "sbci\tZH, HIGH(2*ppv)");
 
@@ -356,6 +356,11 @@ class ExpressionsCompilerTest {
     void testArrayPortsWrite() throws CompileException {
         test("io[PORTC] = r0", "out\tPORTC, r0");
     }
+
+//    @Test
+//    void testArrayPortValWrite() throws CompileException {
+//        test("io[UDR] = r16 = DATA_VAL", "ldi\tr16, DATA_VAL\nout\tUDR, r16");
+//    }
 
     @Test
     void testArrayPortsErrors() {

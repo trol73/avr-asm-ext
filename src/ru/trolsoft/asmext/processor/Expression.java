@@ -152,6 +152,11 @@ public class Expression implements Iterable<Token> {
     }
 
     private int tryToParseArrayAndReturnIndex(String arrayName, List<String> tokens, int i) {
+        if (i >= tokens.size()) {
+            Token t = new Token(Token.TYPE_OTHER, arrayName);
+            list.add(t);
+            return i;
+        }
         String s = tokens.get(i);
         if (i < tokens.size() - 2 && "[".equals(s)) {
             s = tokens.get(i+1);

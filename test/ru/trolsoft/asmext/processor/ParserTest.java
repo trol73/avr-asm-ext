@@ -610,4 +610,26 @@ class ParserTest {
         assertEquals("__if_else_4:", parser.getOutput().get(9));
     }
 
+    @Test
+    void testBytesBlock() throws SyntaxException {
+        Parser parser = new Parser();
+        parser.parseLine("byte[] {  ; data");
+        parser.parseLine("0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a");
+        parser.parseLine("0, 1,");
+        parser.parseLine("123, 0xab, CONST");
+        parser.parseLine("}");
+        assertTrue(parser.getOutput().size() >= 2);
+        assertEquals(".db\t0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07", parser.getOutput().get(0).trim());
+        assertEquals(".db\t0x08, 0x09, 0x0a, 0, 1, 123, 0xab, CONST", parser.getOutput().get(1).trim());
+    }
+
+    @Test
+    void testPrgPtrDeclarationError() {
+        Parser parser = new Parser();
+        try {
+            parser.parseLine(".extern font_5x7 : prg");
+            assertTrue(false);
+        } catch (SyntaxException ignore) {}
+    }
+
 }

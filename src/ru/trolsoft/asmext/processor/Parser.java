@@ -27,6 +27,7 @@ public class Parser {
     boolean gcc;
     private Segment currentSegment;
     private boolean blockComment;
+    private File sourceParent;
 
     Parser() {
 
@@ -41,6 +42,7 @@ public class Parser {
     public void parse(File file) throws IOException, SyntaxException {
         SourceFile src = new SourceFile();
         src.read(file);
+        sourceParent = file.getParentFile();
         preload(src);
         lineNumber = 0;
         currentProcedure = null;
@@ -61,6 +63,13 @@ public class Parser {
         }
 
         String firstToken = line.getFirstToken();
+
+        Block block = getLastBlock();
+        if (block != null && block.type == BLOCK_BYTES && !"}".equals(firstToken)) {
+            processBytesBlockLine(block, line);
+            return;
+        }
+
         if (".".equals(firstToken)) {
             String trimLine = line.pure();
             String name = line.size() > 1 ? line.getToken(1) : null;
@@ -91,6 +100,9 @@ public class Parser {
             processStartIf(line);
         } else if ("}".equals(firstToken) && line.contains("{") && line.contains("else")) { // TODO
             processStartElse(line);
+        } else if ("byte".equals(firstToken) && line.size() >= 4 && "[".equals(line.getToken(1)) &&
+                "]".equals(line.getToken(2)) && line.contains("{") ) {
+            processBytesBlock();
         } else if ("}".equals(firstToken)) {
             processEndBlock(line);
         } else if ("#define".equals(firstToken)) {
@@ -308,7 +320,7 @@ public class Parser {
         }
         expr.set(expr.size() - 1, new Token(Token.TYPE_KEYWORD, "goto"));
         expr.add(new Token(Token.TYPE_OTHER, label));
-        compiler.compileIfGoto(src, expr, output, true);
+        compiler.compileIf(src, expr, output, true);
         Block block = new Block(BLOCK_IF, expr, lineNumber, label);
         blocks.push(block);
     }
@@ -331,6 +343,27 @@ public class Parser {
         output.add(prevBlock.getLabelStart() + ":");
     }
 
+    private void processBytesBlock() {
+        Block block = new Block(BLOCK_BYTES, new Expression(), lineNumber);
+        blocks.push(block);
+    }
+
+    private void processBytesBlockLine(Block block, TokenString line) throws SyntaxException {
+        Expression expr = new Expression(line);
+        boolean comaExpected = false;
+        for (Token t : expr) {
+            if (comaExpected) {
+                if (!t.isOperator(",")) {
+                    error("unexpected value: " + t);
+                }
+                comaExpected = false;
+            } else if (t.isAnyConst() || t.isSomeString()) {
+                block.expr.add(t);
+                comaExpected = true;
+            }
+        }
+    }
+
     private void processEndBlock(TokenString line) throws SyntaxException {
         line.removeEmptyTokens();
         if (line.size() != 1) {
@@ -347,6 +380,9 @@ public class Parser {
             case BLOCK_IF:
             case BLOCK_ELSE:
                 processEndIf(line, lastBlock);
+                break;
+            case BLOCK_BYTES:
+                processEndBytes(lastBlock);
                 break;
         }
     }
@@ -366,6 +402,24 @@ public class Parser {
 
     private void processEndIf(TokenString line, Block block) {
         output.add(block.getLabelStart() + ":");
+    }
+
+    private void processEndBytes(Block block) {
+        int cnt = 0;
+        StringBuilder line = output.startNewLine().append('\t');
+        for (Token t : block.expr) {
+            if (cnt == 0) {
+                line.append(".db\t");
+            }
+            line.append(t);
+            cnt++;
+            if (cnt == 8) {
+                line = output.startNewLine().append('\t');
+                cnt = 0;
+            } else {
+                line.append(", ");
+            }
+        }
     }
 
     private void processContinue(TokenString line) throws SyntaxException {
@@ -492,7 +546,7 @@ public class Parser {
         } else {
             constants.put(name, c);
         }
-        if (!gcc && addToOutput) {
+        if (!gcc && addToOutput && value != null) {
             output.add(line);
         }
     }
@@ -645,19 +699,26 @@ public class Parser {
             }
         }
         String fileName = ParserUtils.removeBrackets(arg.toString());
-        File file = new File(fileName);
-        if (file.exists()) {
-            SourceFile src = new SourceFile();
-            try {
-                src.read(file);
-                for (TokenString s : src) {
-                    preloadLine(s);
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+        if (!tryIncludeFile(fileName)) {
+            tryIncludeFile(sourceParent.getAbsolutePath() + "/" + fileName);
         }
+    }
 
+    private boolean tryIncludeFile(String fileName) throws SyntaxException {
+        File file = new File(fileName);
+        if (!file.exists()) {
+            return false;
+        }
+        SourceFile src = new SourceFile();
+        try {
+            src.read(file);
+            for (TokenString s : src) {
+                preloadLine(s);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return true;
     }
 
     private Alias createAlias(String name, Token reg) throws SyntaxException {
@@ -785,7 +846,14 @@ public class Parser {
                     } else {
                         Expression valExpr = buildExpression(new TokenString(val));
                         markConstAndVariables(valExpr);
-                        expr.set(i, new Token(Token.TYPE_CONST_EXPRESSION, ParserUtils.wrapToBrackets(valExpr.toString())));
+                        Token newToken;
+                        if (gcc) {
+                            newToken = new Token(Token.TYPE_CONST_EXPRESSION, ParserUtils.wrapToBrackets(valExpr.toString()));
+                        } else {
+                            newToken = new Token(Token.TYPE_CONST_EXPRESSION, name);
+                        }
+                        expr.set(i, newToken);
+                        //expr.set(i, new Token(Token.TYPE_CONST_EXPRESSION, ParserUtils.wrapToBrackets(valExpr.toString())));
                     }
                 } else if (getVariable(name) != null) {
                     expr.set(i, new Token(Token.TYPE_VARIABLE, name));
