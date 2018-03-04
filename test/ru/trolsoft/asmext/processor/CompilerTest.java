@@ -246,6 +246,17 @@ class CompilerTest {
         testLine("r16 = PORT_VAL", "ldi\tr16, PORT_VAL");
     }
 
+    @Test
+    void testCallUndefinedProcedureWithArgs() {
+        parser = new Parser(false);
+        try {
+            parser.parseLine("rcall undefined_proc (x1: r10-1, y1: r1+r2)");
+            assertTrue(false);
+        } catch (SyntaxException e) {
+            assertTrue(e.getMessage().contains("undefined procedure: \"undefined_proc\""));
+        }
+    }
+
 
 //    @Test
 //    void testLoopIfBreak() throws SyntaxException {

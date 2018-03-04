@@ -120,6 +120,9 @@ class Compiler {
         List<Argument> args = new ArrayList<>();
         Procedure procedure = parseProcedureArgs(args, expr);
         if (procedure == null) {
+            if (expr.operatorsCount("(") > 0) {
+                undefinedProcedureError(expr.get(1).asString());
+            }
             out.appendCommand(src, expr.getFirst().asString(), expr.get(1));
             return;
         }
