@@ -632,4 +632,16 @@ class ParserTest {
         } catch (SyntaxException ignore) {}
     }
 
+
+//    @Test
+//    void testInline() throws SyntaxException {
+//        Parser parser = new Parser();
+//        parser.parseLine("inline macro_name (val) {");
+//        parser.parseLine("  .use r16 as tmp");
+//        parser.parseLine("  io[DDDRD] = tmp = val");
+//        parser.parseLine("}");
+//
+//        parser.parseLine("macro_name (1)");
+//    }
+
 }

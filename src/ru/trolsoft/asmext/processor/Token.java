@@ -51,17 +51,21 @@ public class Token {
      */
     public static final int TYPE_ARRAY_PRG = 11;
     /**
-     * Array item (io[X], io[Y++] etc.)
+     * Array item (io[DDRC] etc.)
      */
     public static final int TYPE_ARRAY_IO = 12;
     /**
+     * Array item (iow[OCR1B] etc.)
+     */
+    public static final int TYPE_ARRAY_IOW = 13;
+    /**
      * SREG bit flag
      */
-    public static final int TYPE_SREG_FLAG = 13;
+    public static final int TYPE_SREG_FLAG = 14;
     /**
      *  Register bit, "r11[0]" etc.
      */
-    public static final int TYPE_REGISTER_BIT = 14;
+    public static final int TYPE_REGISTER_BIT = 15;
 
 
 
@@ -163,11 +167,15 @@ public class Token {
     }
 
     public boolean isArray() {
-        return type == TYPE_ARRAY_RAM || type == TYPE_ARRAY_IO || type == TYPE_ARRAY_PRG;
+        return type == TYPE_ARRAY_RAM || type == TYPE_ARRAY_IO || type == TYPE_ARRAY_PRG || type == TYPE_ARRAY_IOW;
     }
 
     public boolean isArrayIo() {
         return type == TYPE_ARRAY_IO;
+    }
+
+    public boolean isArrayIow() {
+        return type == TYPE_ARRAY_IOW;
     }
 
     public boolean isFlag() {

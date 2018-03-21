@@ -252,6 +252,9 @@ class Compiler {
         Token a3 = expr.get(4);
         Token a4 = expr.size() > 5 ? expr.get(5) : null;
         if (a1.isFlag()) {
+            if (label == null) {
+                unsupportedOperationError();
+            }
             compileIfFlagExpression(src, inverse, a1, label, out);
         } else if (a1.isOperator("!") && a2.isFlag()) {
             compileIfFlagExpression(src, !inverse, a2, label, out);
@@ -268,6 +271,9 @@ class Compiler {
             String operation = a2.asString();
             if (inverse) {
                 operation = inverseBinaryCompareOperation(operation);
+            }
+            if (label == null) {
+                unsupportedOperationError();
             }
             compileIfBinaryExpression(src, signed, operation, a1, a3, label, out);
         }

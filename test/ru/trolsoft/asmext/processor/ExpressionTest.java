@@ -95,6 +95,12 @@ class ExpressionTest {
         assertEquals(3, e.get(2).getNumberValue());
         assertTrue(e.get(3).isOperator("="));
         assertTrue(e.get(4).isNumber());
+
+        e = exp("iow[OCR1B] = r24.r25");
+        assertEquals(3, e.size());
+        assertTrue(e.get(0).isArrayIow());
+        assertTrue(e.get(1).isOperator("="));
+        assertTrue(e.get(2).isRegGroup());
     }
 
     @Test

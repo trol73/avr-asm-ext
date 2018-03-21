@@ -257,6 +257,33 @@ class CompilerTest {
         }
     }
 
+    @Test
+    void testIfEqualsThenInc() {
+        boolean error;
+        try {
+            testLine("if (r16 != 0xff) r16++", "");
+            error = false;
+        } catch (SyntaxException e) {
+            error = true;
+        }
+        assertTrue(error);
+    }
+
+    @Test
+    void testIfFlagThenAssign() {
+        boolean error;
+        try {
+            testLine("if (F_ZERO) r11 = 0xff", "");
+            error = false;
+        } catch (SyntaxException e) {
+            error = true;
+        }
+        assertTrue(error);
+    }
+
+
+
+
 
 //    @Test
 //    void testLoopIfBreak() throws SyntaxException {

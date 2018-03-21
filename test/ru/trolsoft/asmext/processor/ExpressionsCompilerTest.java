@@ -98,26 +98,25 @@ class ExpressionsCompilerTest {
 
     @Test
     void testIncDec() throws CompileException {
-        ExpressionsCompiler ec = new ExpressionsCompiler(new Parser());
-
-        test(ec, ta("r1", "++"), "inc\tr1");
-        test(ec, ta("r10", "\t", "--"), "dec\tr10");
-        test(ec, ta("Z", "\t", "++"), "adiw\tZL, 1");
-        test(ec, ta("X", "\t", "--"), "sbiw\tXL, 1");
-        test(ec, ta("Y", "\t", "-=", "2"), "sbiw\tYL, 2");
-        test(ec, ta("Z", "\t", "+=", "10"), "adiw\tZL, 10");
-        test(ec, ta("Z", "\t", "+=", "0x0380"), "subi\tZL, -0x80\nsbci\tZH, -0x03");
+        test("r1++", "inc\tr1");
+        test("r10 --", "dec\tr10");
+        test("Z++", "adiw\tZL, 1");
+        test("X--", "sbiw\tXL, 1");
+        test("Y-=2", "sbiw\tYL, 2");
+        test("Z+=10", "adiw\tZL, 10");
+        test("Z += 0x0380", "subi\tZL, -0x80\nsbci\tZH, -0x03");
 
         //    r29.r28 += 0x0380
         //    subi	r28, -0x80 ; '€'
         //    sbci	r29, -3	; 'ý'
 
-        test(ec, ta("Z", "\t", "+=", "1", "+", "1"), "adiw\tZL, (1+1)");
-        test(ec, ta("Z", "\t", "+=", "(", "1", "+", "1", ")"), "adiw\tZL, (1+1)");
-        test(ec, ta("X", "\t", "+=", "2", "+", "1"), "adiw\tXL, (2+1)");
-        test(ec, ta("Z", "\t", "+=", "r21", ".", "r24"), "add\tZL, r24\nadc\tZH, r21");
-        test(ec, ta("Y", "\t", "-=", "r21", ".", "r24"), "sub\tYL, r24\nsbc\tYH, r21");
+        test("Z += 1 + 1", "adiw\tZL, (1+1)");
+        test("Z += (1+1)", "adiw\tZL, (1+1)");
+        test("X +=2+1", "adiw\tXL, (2+1)");
+        test("Z += r21.r24", "add\tZL, r24\nadc\tZH, r21");
+        test("Y -= r21.r24", "sub\tYL, r24\nsbc\tYH, r21");
 
+        test("r25.r24--", "sbiw\tr24, 1");
         //        testLine("if (r16[2]) Z += 100", "sbrc\tr16, 2\nadiw\tZL, 1");
     }
 
@@ -172,6 +171,12 @@ class ExpressionsCompilerTest {
         test(ec, ta("r2", ".", "r1", "-=", "ZH.ZL"), "sub\tr1, ZL\nsbc\tr2, ZH");
 
         test(ec, ta("r2", ".", "r1", "+=", "0x1234"), "subi\tr1, -0x34\nsbci\tr2, -0x12");
+    }
+
+    @Test
+    void testPairMoveOptimization() throws CompileException {
+        test("r25.r24 = r21.r24", "mov\tr25, r21");
+        test("r25.r24.r23 = r21.r24.r23", "mov\tr25, r21");
     }
 
     @Test
@@ -293,6 +298,7 @@ class ExpressionsCompilerTest {
 
         test(ec, ta("var_b", "=", "r16", "=", "var_b", "-", "1"), "lds\tr16, var_b\ndec\tr16\nsts\tvar_b, r16");
 
+
 //        boolean error;
 //        try {
 //            test(ec, ta("=", "r21", "=", "100"), "ldi\tr21, 100\nsts\tvar_b, r21");
@@ -311,6 +317,28 @@ class ExpressionsCompilerTest {
 //            assertEquals("empty expression", e.getMessage());
 //        }
 //        assertTrue(error);
+    }
+
+    @Test
+    void testMovePtrWithOffset() throws SyntaxException, CompileException {
+        Parser parser = new Parser();
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+
+        parser.parseLine(".extern var_ptr : ptr");
+        parser.parseLine(".extern var_prg : prgptr");
+
+        test(ec, ta("X", "=", "var_ptr", "+", "r21.r20"), "ldi\tXL, LOW(var_ptr)\nldi\tXH, HIGH(var_ptr)\nadd\tXL, r20\nadc\tXH, r21");
+        test(ec, ta("X", "=", "var_prg", "+", "r21.r20"), "ldi\tXL, LOW(2*var_prg)\nldi\tXH, HIGH(2*var_prg)\nadd\tXL, r20\nadc\tXH, r21");
+    }
+
+    @Test
+    void testMoveWordWithAddedPair() throws SyntaxException, CompileException {
+        Parser parser = new Parser();
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+
+        parser.parseLine(".extern var_word : word");
+
+        test(ec, ta("X", "=", "var_word", "+", "r21.r20"), "lds\tXL, var_word\nlds\tXH, var_word+1\nadd\tXL, r20\nadc\tXH, r21");
     }
 
     @Test
@@ -356,6 +384,18 @@ class ExpressionsCompilerTest {
     void testArrayPortsWrite() throws CompileException {
         test("io[PORTC] = r0", "out\tPORTC, r0");
     }
+
+    @Test
+    void testArrayWordPortsRead() throws CompileException {
+        test("r0.r1 = iow[OCR1B]", "in\tr0, OCR1BH\nin\tr1, OCR1BL");
+    }
+
+    @Test
+    void testArrayWordPortsWrite() throws CompileException {
+        test("iow[OCR1B] = r0.r1", "out\tOCR1BH, r0\nout\tOCR1BL, r1");
+    }
+
+
 
 //    @Test
 //    void testArrayPortValWrite() throws CompileException {
@@ -478,6 +518,16 @@ class ExpressionsCompilerTest {
     @Test
     void testMoveInverseRegBitToIo() throws CompileException {
         test("io[PORTC].0 = !r16[4]", "sbrs\tr16, 4\nsbi\tPORTC, 0\nsbrc\tr16, 4\ncbi\tPORTC, 0");
+    }
+
+    @Test
+    void testMoveToBitCopyFlag() throws CompileException {
+        test("F_BIT_COPY = r16[3]", "bst\tr16, 3");
+    }
+
+    @Test
+    void testMoveFromBitCopyFlag() throws CompileException {
+        test("r16[1] = F_BIT_COPY", "bld\tr16, 1");
     }
 
     @Test

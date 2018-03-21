@@ -195,6 +195,8 @@ public class Expression implements Iterable<Token> {
             return Token.TYPE_ARRAY_PRG;
         } else if ("io".equals(name)) {
             return Token.TYPE_ARRAY_IO;
+        } else if ("iow".equals(name)) {
+            return Token.TYPE_ARRAY_IOW;
         }
         return -1;
     }

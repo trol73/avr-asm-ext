@@ -36,6 +36,11 @@ public class Main {
 }
 /*
 
+
+
+cpse  r4, r0   ; Сравнить r4 с r0 и пропустить следующую команду, если они равны
+
+
 .pin keyboard_clk = D[0]
 
 keyboard_clk->DDR = 1
@@ -100,18 +105,6 @@ adc r0, rmp
 	if (rmp == cCR) goto @NoPar
 	if (rmp == cLF) goto @NoPar
         if (rmp == cCR || rmp == cLF) goto @NoPar
-
-
-
-	rmp = BYTE1(100000000) ; check overflow
-	cp rRes1, rmp
-	rmp = BYTE2(100000000)
-	cpc rRes2, rmp
-	rmp = BYTE3(100000000)
-	cpc rRes3, rmp
-	rmp = BYTE4(100000000)
-	cpc rRes4, rmp
-	brcs @1
 
 
 
