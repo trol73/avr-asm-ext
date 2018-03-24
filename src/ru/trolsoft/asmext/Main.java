@@ -2,40 +2,93 @@ package ru.trolsoft.asmext;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.*;
+
 import ru.trolsoft.asmext.processor.Parser;
 import ru.trolsoft.asmext.processor.SyntaxException;
 
 public class Main {
 
-    public static void main(String[] args) {
+    private static void processFile(String srcPath, String outPath) throws IOException, SyntaxException {
         long t0 = System.currentTimeMillis();
-        if (args.length != 2) {
-            System.out.println("Usage: avr-asm-ext: <source file> <output file>");
-            System.exit(1);
-        }
-        String src = args[0];
-        String out = args[1];
-        Parser parser = new Parser(src.toLowerCase().endsWith(".s"));
-        File srcFile = new File(src);
+        boolean gcc = srcPath.toLowerCase().endsWith(".s");
+        Parser parser = new Parser(gcc);
+        File srcFile = new File(srcPath);
         if (!srcFile.exists()) {
-            System.out.println("File not found: " + src);
-            System.exit(2);
+            fatalError("File not found: " + srcPath);
         }
+        System.out.print("Process file: " + srcFile.getName());
+        parser.parse(srcFile);
+        parser.getOutput().writeToFile(outPath);
+        t0 = System.currentTimeMillis() - t0;
+        System.out.println(" .. " + t0 + "ms");
+    }
+
+    private static List<AbstractMap.SimpleEntry<String, String>> buildProcessList(String[] args) {
+        List<AbstractMap.SimpleEntry<String, String>> result = new ArrayList<>();
+        if (args.length == 2) {
+            String src = args[0];
+            String out = args[1];
+            result.add(new AbstractMap.SimpleEntry<>(src, out));
+        } else {
+            String srcPath = args[0];
+            String outPath = args[1];
+            if (!new File(outPath).exists()) {
+                fatalError("Output directory doesn't exists: " + outPath);
+            }
+            if (!srcPath.endsWith(File.separator)) {
+                srcPath += File.separator;
+            }
+            if (!outPath.endsWith(File.separator)) {
+                outPath += File.separator;
+            }
+            for (int i = 2; i < args.length; i++) {
+                String arg = args[i];
+                result.add(new AbstractMap.SimpleEntry<>(srcPath + arg, outPath + arg));
+            }
+        }
+        return result;
+    }
+
+    public static void main(String[] args) {
+        checkUsage(args);
+        List<AbstractMap.SimpleEntry<String, String>> processList = buildProcessList(args);
+        String src = "", out;
         try {
-            parser.parse(srcFile);
-            parser.getOutput().writeToFile(out);
+            for (AbstractMap.SimpleEntry<String, String> pair : processList) {
+                src = pair.getKey();
+                out = pair.getValue();
+                processFile(src, out);
+            }
         } catch (IOException e1) {
+            System.out.println();
             System.out.println(e1.getMessage());
             System.exit(1);
         } catch (SyntaxException e2) {
+            System.out.println();
             System.out.println(src + ":" + e2.line + ": Error: " + e2.getMessage());
             System.exit(1);
         }
-        //System.out.println("Elapsed time: " + (System.currentTimeMillis() - t0) + " ms");
+    }
+
+    private static void checkUsage(String[] args) {
+        if (args.length < 2) {
+            System.out.println("Usage: avr-asm-ext <source file> <output file>");
+            System.out.println("   or: avr-asm-ext <source path> <output path> <filename-1> .. <filename-n>");
+            System.exit(1);
+        }
+    }
+
+    private static void fatalError(String msg) {
+        System.out.println(msg);
+        System.exit(2);
     }
 }
 /*
 
+TODO avr asm ext - subi, cbi only high
+
+; TODO !!!! компилируется неверно без ошибки if (j < slider_y || j > slider_y + slider_height) {
 
 
 cpse  r4, r0   ; Сравнить r4 с r0 и пропустить следующую команду, если они равны

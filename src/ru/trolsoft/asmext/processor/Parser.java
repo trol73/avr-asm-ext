@@ -46,8 +46,12 @@ public class Parser {
         preload(src);
         lineNumber = 0;
         currentProcedure = null;
-        for (TokenString s : src) {
-            parseLine(s);
+        try {
+            for (TokenString s : src) {
+                parseLine(s);
+            }
+        } catch (SyntaxException e) {
+            throw e.line(lineNumber);
         }
     }
 
@@ -123,8 +127,8 @@ public class Parser {
 
 
     private boolean skipComment(TokenString line) {
-        // comments in gcc
-        if (gcc && line.size() > 1 && "/".equals(line.getToken(0)) && "*".equals(line.getToken(1))) {
+        // comments /* */
+        if (line.size() > 1 && "/".equals(line.getToken(0)) && "*".equals(line.getToken(1))) {
             blockComment = true;
         } else if (blockComment && line.size() > 1 && "*".equals(line.getToken(0)) && "/".equals(line.getToken(1))) {
             blockComment = false;
@@ -219,7 +223,21 @@ public class Parser {
             String nextToken = i < line.size() - 1 ? line.getToken(i + 1) : null;
             Alias alias = ":".equals(nextToken) ? null : resolveProcAlias(token);
             if (alias != null) {
-                line.modifyToken(i, alias.register.toString());
+                Token t = alias.register;
+                if (t.isRegGroup()) {
+                    line.modifyToken(i, t.getReg(0).toString());
+                    List<String> tokens = line.getTokens();
+                    int pos = i + 1;
+                    tokens.add(pos++, ".");
+                    for (int ri = 1; ri < t.size(); ri++) {
+                        tokens.add(pos++, t.getReg(ri).toString());
+                        if (ri < t.size()-1) {
+                            tokens.add(pos++, ".");
+                        }
+                    }
+                } else {
+                    line.modifyToken(i, t.toString());
+                }
             } else if (token.startsWith("@") && currentProcedure != null) {
                 line.modifyToken(i, resolveLocalLabel(token.substring(1)));
             }

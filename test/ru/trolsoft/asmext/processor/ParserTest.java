@@ -632,6 +632,43 @@ class ParserTest {
         } catch (SyntaxException ignore) {}
     }
 
+    @Test
+    void testCallSingleEqu() throws SyntaxException {
+        Parser parser = new Parser();
+        parser.parseLine(".equ COLOR");
+        parser.parseLine(".extern spi_write_word (w: r25.r24)");
+        parser.parseLine("rcall spi_write_word (COLOR)");
+        assertEquals(4, parser.getOutput().size());
+        assertEquals("ldi\tr24, BYTE1(COLOR)", parser.getOutput().get(1));
+        assertEquals("ldi\tr25, BYTE2(COLOR)", parser.getOutput().get(2));
+        assertEquals("rcall\tspi_write_word", parser.getOutput().get(3));
+    }
+
+    @Test
+    void testCallMultipleEqu() throws SyntaxException {
+        Parser parser = new Parser();
+        parser.parseLine(".equ COLOR");
+        parser.parseLine(".equ ATTR");
+        parser.parseLine(".extern spi_write_data (color: r25.r24, attr: r22)");
+        parser.parseLine("rcall spi_write_data (color: COLOR, attr: ATTR)");
+        assertEquals(5, parser.getOutput().size());
+        assertEquals("ldi\tr24, BYTE1(COLOR)", parser.getOutput().get(1));
+        assertEquals("ldi\tr25, BYTE2(COLOR)", parser.getOutput().get(2));
+        assertEquals("ldi\tr22, ATTR", parser.getOutput().get(3));
+        assertEquals("rcall\tspi_write_data", parser.getOutput().get(4));
+    }
+
+    @Test
+    void testMoveEquToAliasPair() throws SyntaxException {
+        Parser parser = new Parser();
+        parser.parseLine(".equ COLOR");
+        parser.parseLine(".use r25.r24 as color");
+        parser.parseLine("color = COLOR");
+        assertEquals(3, parser.getOutput().size());
+        assertEquals("ldi\tr24, BYTE1(COLOR)", parser.getOutput().get(1));
+        assertEquals("ldi\tr25, BYTE2(COLOR)", parser.getOutput().get(2));
+    }
+
 
 //    @Test
 //    void testInline() throws SyntaxException {

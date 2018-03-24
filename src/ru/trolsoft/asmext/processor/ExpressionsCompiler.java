@@ -775,7 +775,11 @@ e.printStackTrace();
         if (parser.gcc) {
             return "((" + val + ">>" + (byteNum*8) + ") & 0xFF)";
         } else {
-            return ("BYTE" + (byteNum+1)) + "(" + val + ")";
+            String valStr = val.toString();
+            if (!ParserUtils.isInBrackets(valStr)) {
+                valStr = "(" + valStr + ")";
+            }
+            return ("BYTE" + (byteNum+1)) + valStr;
         }
     }
 

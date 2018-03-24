@@ -57,11 +57,12 @@ class Compiler {
             return procedure;
         }
         if (expr.size() == 3) {
-            String argInBrackets = expr.getLast().asString();
+            String argInBrackets = expr.getLast().toString();
             if (!ParserUtils.isInBrackets(argInBrackets)) {
                 wrongCallSyntaxError();
             }
-            Expression argExpr = new Expression(new TokenString(ParserUtils.removeBrackets(argInBrackets)));
+            Expression argExpr = new Expression();
+            argExpr.add(removeBracketFromToken(expr.getLast()));
             parseSingleAnonymousArg(procedure, args, argExpr);
             return procedure;
         }
@@ -90,12 +91,20 @@ class Compiler {
                 if (token.isOperator(",")) {
                     break;
                 }
-                argExpr.add(token);
+                argExpr.add(removeBracketFromToken(token));
             }
             Argument arg = new Argument(name.toString(), argExpr);
             args.add(arg);
         }
         return procedure;
+    }
+
+    private static Token removeBracketFromToken(Token t) {
+        String ts = t.toString();
+        if (ParserUtils.isInBrackets(ts)) {
+            return new Token(t.getType(), ParserUtils.removeBrackets(ts));
+        }
+        return t;
     }
 
 
