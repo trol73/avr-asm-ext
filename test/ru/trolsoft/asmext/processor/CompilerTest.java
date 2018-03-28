@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class CompilerTest {
     Parser parser = new Parser();
-    Compiler compiler = new Compiler(parser);
+    ru.trolsoft.asmext.compiler.Compiler compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
 
 
     private static String strip(String s) {
@@ -36,6 +36,16 @@ class CompilerTest {
         assertEquals(res, outStr);
     }
 
+    boolean hasCompileError(String src) {
+        OutputFile out = new OutputFile();
+        try {
+            new ru.trolsoft.asmext.compiler.Compiler(new Parser()).compile(new TokenString(src), out);
+            return false;
+        } catch (SyntaxException e) {
+            return true;
+        }
+    }
+
 
     @Test
     void testIfGoto() throws SyntaxException {
@@ -48,33 +58,33 @@ class CompilerTest {
         testLine("if (r2 == r22) goto lbl", "cp\tr2, r22\nbreq\tlbl");
 
         testLine("if (r1 < r2) goto lbl", "cp\tr1, r2\nbrlo\tlbl");
-        testLine("if (r1 < 10) goto lbl", "cpi\tr1, 10\nbrlo\tlbl");
-        testLine("if s(r1 < 10) goto lbl", "cpi\tr1, 10\nbrlt\tlbl");
+        testLine("if (r21 < 10) goto lbl", "cpi\tr21, 10\nbrlo\tlbl");
+        testLine("if s(r21 < 10) goto lbl", "cpi\tr21, 10\nbrlt\tlbl");
         testLine("if u(r1 < r2) goto lbl", "cp\tr1, r2\nbrlo\tlbl");
         testLine("if s(r1 < r2) goto lbl", "cp\tr1, r2\nbrlt\tlbl");
 
         testLine("if (r1 > r2) goto lbl", "cp\tr2, r1\nbrlo\tlbl");
-        testLine("if (r1 > 10) goto lbl", "cpi\tr1, 10+1\nbrsh\tlbl");
-        testLine("if s(r1 > 10) goto lbl", "cpi\tr1, 10+1\nbrge\tlbl");
+        testLine("if (r21 > 10) goto lbl", "cpi\tr21, 10+1\nbrsh\tlbl");
+        testLine("if s(r21 > 10) goto lbl", "cpi\tr21, 10+1\nbrge\tlbl");
         testLine("if u(r1 > r2) goto lbl", "cp\tr2, r1\nbrlo\tlbl");
         testLine("if s(r1 > r2) goto lbl", "cp\tr2, r1\nbrlt\tlbl");
 
         testLine("if (r1 >= r2) goto lbl", "cp\tr1, r2\nbrsh\tlbl");
-        testLine("if (r1 >= 10) goto lbl", "cpi\tr1, 10\nbrsh\tlbl");
-        testLine("if s(r1 >= 10) goto lbl", "cpi\tr1, 10\nbrge\tlbl");
+        testLine("if (r21 >= 10) goto lbl", "cpi\tr21, 10\nbrsh\tlbl");
+        testLine("if s(r21 >= 10) goto lbl", "cpi\tr21, 10\nbrge\tlbl");
         testLine("if u(r1 >= r2) goto lbl", "cp\tr1, r2\nbrsh\tlbl");
         testLine("if s(r1 >= r2) goto lbl", "cp\tr1, r2\nbrge\tlbl");
 
         testLine("if (r1 <= r2) goto lbl", "cp\tr2, r1\nbrsh\tlbl");
-        testLine("if (r1 <= 10) goto lbl", "cpi\tr1, 10-1\nbrlo\tlbl");
-        testLine("if s(r1 <= 10) goto lbl", "cpi\tr1, 10-1\nbrlt\tlbl");
+        testLine("if (r21 <= 10) goto lbl", "cpi\tr21, 10-1\nbrlo\tlbl");
+        testLine("if s(r21 <= 10) goto lbl", "cpi\tr21, 10-1\nbrlt\tlbl");
         testLine("if u(r1 <= r2) goto lbl", "cp\tr2, r1\nbrsh\tlbl");
         testLine("if s(r1 <= r2) goto lbl", "cp\tr2, r1\nbrge\tlbl");
 
         testLine("if (r1 == 0) goto lbl ; comment", "tst\tr1\t\t; comment\nbreq\tlbl\t\t; comment");
         testLine("if (r1 == 0) goto lbl // comment", "tst\tr1\t\t// comment\nbreq\tlbl\t\t// comment");
 
-        testLine("if (r1 < '9'+1) goto lbl", "cpi\tr1, '9'+1\nbrlo\tlbl");
+        testLine("if (r21 < '9'+1) goto lbl", "cpi\tr21, '9'+1\nbrlo\tlbl");
     }
 
     @Test
@@ -88,7 +98,7 @@ class CompilerTest {
     @Test
     void testProcCalls() throws SyntaxException {
         parser = new Parser();
-        compiler = new Compiler(parser);
+        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
 
         Procedure proc = new Procedure("my_proc");
         proc.addArg(new Alias("x", new Token(Token.TYPE_REGISTER, "r24")));
@@ -130,7 +140,7 @@ class CompilerTest {
     @Test
     void testIfGotoFlags() throws SyntaxException {
         parser = new Parser();
-        compiler = new Compiler(parser);
+        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
 
         testLine("if (F_CARRY) goto CalcPwO", "brcs\tCalcPwO");
         testLine("if (!F_CARRY) goto CalcPwO", "brcc\tCalcPwO");
@@ -139,7 +149,7 @@ class CompilerTest {
     @Test
     void testIfRegisterBitSet() throws SyntaxException {
         parser = new Parser();
-        compiler = new Compiler(parser);
+        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
 
         testLine("if (r16[2]) goto loc_43", "sbrc\tr16, 2\nrjmp\tloc_43");
         testLine("if (r1[OFFSET]) goto loc_43", "sbrc\tr1, OFFSET\nrjmp\tloc_43");
@@ -154,7 +164,7 @@ class CompilerTest {
     @Test
     void testIfRegisterBitClear() throws SyntaxException {
         parser = new Parser();
-        compiler = new Compiler(parser);
+        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
 
         testLine("if (!r16[2]) goto loc_44", "sbrs\tr16, 2\nrjmp\tloc_44");
         testLine("if (!r16[OFFSET]) goto loc_44", "sbrs\tr16, OFFSET\nrjmp\tloc_44");
@@ -169,7 +179,7 @@ class CompilerTest {
     @Test
     void testIfRegisterBitClearContinueLoop() throws SyntaxException {
         parser = new Parser();
-        compiler = new Compiler(parser);
+        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
 
         parser.parseLine("loop (r20 = 1) {");
         testLine("if (!r16[2]) continue", "sbrs\tr16, 2\nrjmp\t" + parser.getLastBlock().getLabelStart());
@@ -178,7 +188,7 @@ class CompilerTest {
     @Test
     void testIfRegisterBitClearBreakLoop() throws SyntaxException {
         parser = new Parser();
-        compiler = new Compiler(parser);
+        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
 
         parser.parseLine("loop (r20 = 1) {");
         testLine("if (!r16[2]) break", "sbrs\tr16, 2\nrjmp\t" + parser.getLastBlock().buildEndLabel());
@@ -187,7 +197,7 @@ class CompilerTest {
     @Test
     void testIfRegisterBitSetExpression() throws SyntaxException {
         parser = new Parser();
-        compiler = new Compiler(parser);
+        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
 
         testLine("if (r16[2]) Z++", "sbrc\tr16, 2\nadiw\tZL, 1");
         testLine("if (r16[2]) r16 |= 0x10", "sbrc\tr16, 2\nori\tr16, 0x10");
@@ -195,18 +205,14 @@ class CompilerTest {
 
     @Test
     void testIfRegisterBitSetError() {
-        parser = new Parser();
-        compiler = new Compiler(parser);
-
-        boolean error;
-        try {
-            testLine("if (r16[8]) goto loc_43", "sbrc\tr16, 8\nrjmp\tloc_43");
-            error = false;
-        } catch (SyntaxException e) {
-            error = true;
-        }
-        assertTrue(error);
+        assertTrue(hasCompileError("if (r16[8]) goto loc_43"));
     }
+
+    @Test
+    void testIfMultipleError() {
+        assertTrue(hasCompileError("if (r0 < r1 || r0 > r2 + r3) goto lbl"));
+    }
+
 
     @Test
     void testIfIoBitIsSet() throws SyntaxException {
@@ -222,27 +228,20 @@ class CompilerTest {
     void testRegisterBitConst() throws SyntaxException {
         parser = new Parser();
         parser.parseLine(".EQU bEdge = 4");
-        compiler = new Compiler(parser);
+        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
         testLine("r10[bEdge] = 1", "sbr\tr10, 1<<bEdge");
     }
 
     @Test
     void testRegBitWrongOperation() {
-        boolean error;
-        try {
-            testLine("r10[0] |= 1", "");
-            error = false;
-        } catch (SyntaxException e) {
-            error = true;
-        }
-        assertTrue(error);
+        assertTrue(hasCompileError("r10[0] |= 1"));
     }
 
     @Test
     void testEqu() throws SyntaxException {
         parser = new Parser(false);
         parser.parseLine(".EQU PORT_VAL = 1<<4");
-        compiler = new Compiler(parser);
+        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
         testLine("r16 = PORT_VAL", "ldi\tr16, PORT_VAL");
     }
 
@@ -259,28 +258,18 @@ class CompilerTest {
 
     @Test
     void testIfEqualsThenInc() {
-        boolean error;
-        try {
-            testLine("if (r16 != 0xff) r16++", "");
-            error = false;
-        } catch (SyntaxException e) {
-            error = true;
-        }
-        assertTrue(error);
+        assertTrue(hasCompileError("if (r16 != 0xff) r16++"));
     }
 
     @Test
     void testIfFlagThenAssign() {
-        boolean error;
-        try {
-            testLine("if (F_ZERO) r11 = 0xff", "");
-            error = false;
-        } catch (SyntaxException e) {
-            error = true;
-        }
-        assertTrue(error);
+        assertTrue(hasCompileError("if (F_ZERO) r11 = 0xff"));
     }
 
+    @Test
+    void testIfEqualsSingle() throws SyntaxException {
+        testLine("if (r21 != r22) r23 = 14", "cpse\tr21, r22\nldi\tr23, 14");
+    }
 
 
 

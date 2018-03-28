@@ -1,6 +1,7 @@
 package ru.trolsoft.asmext.processor;
 
 
+import ru.trolsoft.asmext.compiler.ExpressionsCompiler;
 import ru.trolsoft.asmext.data.*;
 import ru.trolsoft.asmext.files.OutputFile;
 import ru.trolsoft.asmext.files.SourceFile;
@@ -16,15 +17,15 @@ public class Parser {
     Procedure currentProcedure;
     private int lineNumber;
     private OutputFile output = new OutputFile();
-    private final Compiler compiler = new Compiler(this);
-    Map<String, Procedure> procedures = new HashMap<>();
+    private final ru.trolsoft.asmext.compiler.Compiler compiler = new ru.trolsoft.asmext.compiler.Compiler(this);
+    public Map<String, Procedure> procedures = new HashMap<>();
     Map<String, Variable> variables = new HashMap<>();
     Map<String, Constant> constants = new HashMap<>();
     Map<String, Alias> globalAliases = new HashMap<>();
     private Map<String, Label> dataLabels = new HashMap<>();
     private Map<String, Label> codeLabels = new HashMap<>();
     private Stack<Block> blocks = new Stack<>();
-    boolean gcc;
+    public boolean gcc;
     private Segment currentSegment;
     private boolean blockComment;
     private File sourceParent;
@@ -319,11 +320,7 @@ public class Parser {
                 if (!argExpr.get(1).isOperator("=")) {
                     error("wrong loop argument expression");
                 }
-                try {
-                    new ExpressionsCompiler(this).compile(str, argExpr.copy(), output);
-                } catch (ExpressionsCompiler.CompileException e) {
-                    error("wrong argument");
-                }
+                new ExpressionsCompiler(this).compile(str, argExpr.copy(), output);
             }
         }
         output.add(block.getLabelStart() + ":");
@@ -338,7 +335,7 @@ public class Parser {
         }
         expr.set(expr.size() - 1, new Token(Token.TYPE_KEYWORD, "goto"));
         expr.add(new Token(Token.TYPE_OTHER, label));
-        compiler.compileIf(src, expr, output, true);
+        compiler.compileIf(src, expr, true, output);
         Block block = new Block(BLOCK_IF, expr, lineNumber, label);
         blocks.push(block);
     }
@@ -769,7 +766,7 @@ public class Parser {
         return output;
     }
 
-    Variable getVariable(String name) {
+    public Variable getVariable(String name) {
         Variable result = variables.get(name);
         if (result == null) {
             if (codeLabels.containsKey(name) || procedures.containsKey(name)) {
@@ -788,7 +785,7 @@ public class Parser {
         return constants.containsKey(name) || (currentProcedure != null && currentProcedure.hasConst(name));
     }
 
-    Constant getConstant(String name) {
+    public Constant getConstant(String name) {
         if (currentProcedure != null && currentProcedure.hasConst(name)) {
             return currentProcedure.getConst(name);
         } else {
@@ -814,7 +811,7 @@ public class Parser {
         return ParserUtils.wrapToBrackets(result.toString());
     }
 
-    String makeConstExpression(String name) {
+    public String makeConstExpression(String name) {
         Constant c = getConstant(name);
         return makeConstExpression(c);
     }
@@ -932,14 +929,14 @@ public class Parser {
         }
     }
 
-    Expression buildExpression(TokenString src) {
+    public Expression buildExpression(TokenString src) {
         Expression expr = new Expression(src);
         markConstAndVariables(expr);
         return expr;
     }
 
 
-    Block getLastBlock() {
+    public Block getLastBlock() {
         if (blocks.isEmpty()) {
             return null;
         }
@@ -947,7 +944,7 @@ public class Parser {
     }
 
 
-    Block getCurrentCycleBlock() throws SyntaxException {
+    public Block getCurrentCycleBlock() throws SyntaxException {
         for (int i = blocks.size()-1; i >= 0; i--) {
             Block block = blocks.get(i);
             if (block.type == BLOCK_LOOP) {

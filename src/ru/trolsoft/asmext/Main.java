@@ -86,14 +86,6 @@ public class Main {
 }
 /*
 
-TODO avr asm ext - subi, cbi only high
-
-; TODO !!!! компилируется неверно без ошибки if (j < slider_y || j > slider_y + slider_height) {
-
-
-cpse  r4, r0   ; Сравнить r4 с r0 и пропустить следующую команду, если они равны
-
-
 .pin keyboard_clk = D[0]
 
 keyboard_clk->DDR = 1

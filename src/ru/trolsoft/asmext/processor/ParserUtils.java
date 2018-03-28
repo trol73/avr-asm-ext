@@ -45,7 +45,7 @@ public class ParserUtils {
         return Registers.isPair(name);
     }
 
-    static boolean isInstruction(String name) {
+    public static boolean isInstruction(String name) {
         return Instructions.isInstruction(name);
     }
 
@@ -84,7 +84,7 @@ public class ParserUtils {
         }
     }
 
-    static boolean isInBrackets(String s) {
+    public static boolean isInBrackets(String s) {
         return s != null && s.startsWith("(") && s.endsWith(")");
     }
 
@@ -95,7 +95,7 @@ public class ParserUtils {
         return expr;
     }
 
-    static String removeBrackets(String expr) {
+    public static String removeBrackets(String expr) {
         return expr.substring(1, expr.length()-1);
     }
 

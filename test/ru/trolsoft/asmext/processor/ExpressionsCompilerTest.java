@@ -3,11 +3,11 @@ package ru.trolsoft.asmext.processor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import ru.trolsoft.asmext.compiler.ExpressionsCompiler;
 import ru.trolsoft.asmext.data.Variable;
 import ru.trolsoft.asmext.files.OutputFile;
 import ru.trolsoft.asmext.utils.TokenString;
 
-import static ru.trolsoft.asmext.processor.ExpressionsCompiler.CompileException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -25,7 +25,7 @@ class ExpressionsCompilerTest {
     void tearDown() {
     }
 
-    private void test(ExpressionsCompiler ec, TokenString tokens, String outVal) throws CompileException {
+    private void test(ExpressionsCompiler ec, TokenString tokens, String outVal) throws SyntaxException {
         OutputFile out = new OutputFile();
         ec.compile(tokens, ec.parser.buildExpression(tokens), out);
         assertEquals(outVal, out.toString().trim());
@@ -38,7 +38,7 @@ class ExpressionsCompilerTest {
 //        assertEquals(outVal, out.toString().trim());
 //    }
 
-    private void test(String s, String outVal) throws CompileException {
+    private void test(String s, String outVal) throws SyntaxException {
         Parser parser = new Parser();
         ExpressionsCompiler ec = new ExpressionsCompiler(parser);
         OutputFile out = new OutputFile();
@@ -48,7 +48,7 @@ class ExpressionsCompilerTest {
         assertEquals(outVal, out.toString().trim());
     }
 
-    private boolean compile(ExpressionsCompiler ec, TokenString src) throws CompileException {
+    private boolean compile(ExpressionsCompiler ec, TokenString src) throws SyntaxException {
         return ec.compile(src, new Expression(src), new OutputFile());
     }
 
@@ -58,7 +58,7 @@ class ExpressionsCompilerTest {
         try {
             compile(ec, new TokenString(s));
             return false;
-        } catch (CompileException e) {
+        } catch (SyntaxException e) {
             return true;
         }
     }
@@ -67,37 +67,37 @@ class ExpressionsCompilerTest {
         try {
             compile(ec, new TokenString(s));
             return false;
-        } catch (CompileException e) {
+        } catch (SyntaxException e) {
             return true;
         }
     }
 
     @Test
-    void testAssign() throws CompileException {
+    void testAssign() throws SyntaxException {
         ExpressionsCompiler ec = new ExpressionsCompiler(new Parser());
 
-        test(ec, ta("r1", "  ", "=", "12"), "ldi\tr1, 12");
-        test(ec, ta("r1", "  ", "=", "12"), "ldi\tr1, 12");
+        test(ec, ta("r21", "  ", "=", "12"), "ldi\tr21, 12");
+        test(ec, ta("r21", "  ", "=", "12"), "ldi\tr21, 12");
         test(ec, ta("r10", "  ", "=", "r0"), "mov\tr10, r0");
         test(ec, ta("r20", "=", "0"), "clr\tr20");
         test(ec, ta("r20", "=", "-", "1"), "ldi\tr20, -1");
         test(ec, ta("r20", "=", "-", "1", "+", "1"), "ldi\tr20, -1+1");
         test(ec, ta("r5", "=", "-", "r4"), "mov\tr5, r4\nneg\tr5");
-        test(ec, ta("r5", "=", "-", "r4", "+", "10"), "mov\tr5, r4\nneg\tr5\nsubi\tr5, -10");
-        test(ec, ta("r5", "=", "-", "r4", "+", "10", "-", "1"), "mov\tr5, r4\nneg\tr5\nsubi\tr5, -(10-1)");
-        test(ec, ta("r5", "=", "0b00000001"), "ldi\tr5, 0b00000001");
-        test(ec, ta("r5", "=", "0xAB"), "ldi\tr5, 0xAB");
-        test(ec, ta("r15", "=", "1", "<<", "5"), "ldi\tr15, 1<<5");
-        test(ec, ta("r15", "=", "(", "1", "<<", "5", ")", "|", "0x12"), "ldi\tr15, (1<<5)|0x12");
+        test(ec, ta("r25", "=", "-", "r4", "+", "10"), "mov\tr25, r4\nneg\tr25\nsubi\tr25, -10");
+        test(ec, ta("r25", "=", "-", "r4", "+", "10", "-", "1"), "mov\tr25, r4\nneg\tr25\nsubi\tr25, -(10-1)");
+        test(ec, ta("r25", "=", "0b00000001"), "ldi\tr25, 0b00000001");
+        test(ec, ta("r25", "=", "0xAB"), "ldi\tr25, 0xAB");
+        test(ec, ta("r25", "=", "1", "<<", "5"), "ldi\tr25, 1<<5");
+        test(ec, ta("r25", "=", "(", "1", "<<", "5", ")", "|", "0x12"), "ldi\tr25, (1<<5)|0x12");
 
-        test(ec, ta("r15", "=", "r20", "&", "0x0F"), "mov\tr15, r20\nandi\tr15, 0x0F");
-        test(ec, ta("r15", "=", "r20", "|", "0x0F"), "mov\tr15, r20\nori\tr15, 0x0F");
+        test(ec, ta("r25", "=", "r20", "&", "0x0F"), "mov\tr25, r20\nandi\tr25, 0x0F");
+        test(ec, ta("r25", "=", "r20", "|", "0x0F"), "mov\tr25, r20\nori\tr25, 0x0F");
         test(ec, ta("r15", "=", "r20", "&", "r0"), "mov\tr15, r20\nand\tr15, r0");
         test(ec, ta("r15", "=", "r20", "|", "r0"), "mov\tr15, r20\nor\tr15, r0");
     }
 
     @Test
-    void testIncDec() throws CompileException {
+    void testIncDec() throws SyntaxException {
         test("r1++", "inc\tr1");
         test("r10 --", "dec\tr10");
         test("Z++", "adiw\tZL, 1");
@@ -122,27 +122,27 @@ class ExpressionsCompilerTest {
 
 
     @Test
-    void testAdd() throws CompileException {
+    void testAdd() throws SyntaxException {
         ExpressionsCompiler ec = new ExpressionsCompiler(new Parser());
 
-        test(ec, ta("r1", "+=", " ", "10"), "subi\tr1, -10");
-        test(ec, ta("r7", "-=", " ", "50"), "subi\tr7, 50");
+        test(ec, ta("r16", "+=", " ", "10"), "subi\tr16, -10");
+        test(ec, ta("r17", "-=", " ", "50"), "subi\tr17, 50");
         test(ec, ta("r20", "+", "=", " ", "r24"), "add\tr20, r24");
 
-        test(ec, ta("r1", "-=", " ", "10", "+", "1"), "subi\tr1, (10+1)");
-        test(ec, ta("r1", "+=", " ", "10", "+", " ", "1"), "subi\tr1, -(10+1)");
+        test(ec, ta("r21", "-=", " ", "10", "+", "1"), "subi\tr21, (10+1)");
+        test(ec, ta("r21", "+=", " ", "10", "+", " ", "1"), "subi\tr21, -(10+1)");
 
         test(ec, ta("r24", "=", "r24", "+", "r2", "+", "r1"), "add\tr24, r2\nadd\tr24, r1");
         test(ec, ta("r24", "+=", "r2", "+", "r1"), "add\tr24, r2\nadd\tr24, r1");
         test(ec, ta("r24", "+", "=", "r2", "+", "r1"), "add\tr24, r2\nadd\tr24, r1");
 
-        test(ec, ta("r1", "&=", "0x10"), "andi\tr1, 0x10");
-        test(ec, ta("r1", "|=", "0x20"), "ori\tr1, 0x20");
+        test(ec, ta("r21", "&=", "0x10"), "andi\tr21, 0x10");
+        test(ec, ta("r21", "|=", "0x20"), "ori\tr21, 0x20");
     }
 
 
     @Test
-    void testVars() throws CompileException {
+    void testVars() throws SyntaxException {
         Parser parser = new Parser();
         ExpressionsCompiler ec = new ExpressionsCompiler(parser);
 
@@ -170,17 +170,17 @@ class ExpressionsCompilerTest {
         test(ec, ta("r2", ".", "r1", "-=", "Z"), "sub\tr1, ZL\nsbc\tr2, ZH");
         test(ec, ta("r2", ".", "r1", "-=", "ZH.ZL"), "sub\tr1, ZL\nsbc\tr2, ZH");
 
-        test(ec, ta("r2", ".", "r1", "+=", "0x1234"), "subi\tr1, -0x34\nsbci\tr2, -0x12");
+        test(ec, ta("r22", ".", "r21", "+=", "0x1234"), "subi\tr21, -0x34\nsbci\tr22, -0x12");
     }
 
     @Test
-    void testPairMoveOptimization() throws CompileException {
+    void testPairMoveOptimization() throws SyntaxException {
         test("r25.r24 = r21.r24", "mov\tr25, r21");
         test("r25.r24.r23 = r21.r24.r23", "mov\tr25, r21");
     }
 
     @Test
-    void testPairs() throws CompileException {
+    void testPairs() throws SyntaxException {
         Parser parser = new Parser();
         ExpressionsCompiler ec = new ExpressionsCompiler(parser);
 
@@ -198,14 +198,14 @@ class ExpressionsCompilerTest {
         test(ec, ta("r4", ".", "r3", ".", "r2", ".", "r1", "=", "r8", ".", "ZH", ".", "ZL", ".", "r0"),
                 "mov\tr1, r0\nmov\tr2, ZL\nmov\tr3, ZH\nmov\tr4, r8");
 
-        test(ec, ta("r17", ".", "r16", ".", "r15", "=", "0x123456"), "ldi\tr15, 0x56\nldi\tr16, 0x34\nldi\tr17, 0x12");
+        test(ec, ta("r17", ".", "r16", ".", "r18", "=", "0x123456"), "ldi\tr18, 0x56\nldi\tr16, 0x34\nldi\tr17, 0x12");
 
         assertFalse(compile(ec, ta("r23", ".", "r22", "10")));
         assertFalse(compile(ec, ta("r23", ".", "r22", "unknown")));
     }
 
     @Test
-    void testPairMem() throws SyntaxException, CompileException {
+    void testPairMem() throws SyntaxException {
         Parser parser = new Parser();
         ExpressionsCompiler ec = new ExpressionsCompiler(parser);
 
@@ -232,7 +232,7 @@ class ExpressionsCompilerTest {
 
 
     @Test
-    void testXYZ() throws CompileException, SyntaxException {
+    void testXYZ() throws SyntaxException {
         Parser parser = new Parser();
         ExpressionsCompiler ec = new ExpressionsCompiler(parser);
 
@@ -286,7 +286,7 @@ class ExpressionsCompilerTest {
 
 
     @Test
-    void testMultipleMove() throws SyntaxException, CompileException {
+    void testMultipleMove() throws SyntaxException {
         Parser parser = new Parser();
         ExpressionsCompiler ec = new ExpressionsCompiler(parser);
 
@@ -320,7 +320,7 @@ class ExpressionsCompilerTest {
     }
 
     @Test
-    void testMovePtrWithOffset() throws SyntaxException, CompileException {
+    void testMovePtrWithOffset() throws SyntaxException {
         Parser parser = new Parser();
         ExpressionsCompiler ec = new ExpressionsCompiler(parser);
 
@@ -332,7 +332,7 @@ class ExpressionsCompilerTest {
     }
 
     @Test
-    void testMoveWordWithAddedPair() throws SyntaxException, CompileException {
+    void testMoveWordWithAddedPair() throws SyntaxException {
         Parser parser = new Parser();
         ExpressionsCompiler ec = new ExpressionsCompiler(parser);
 
@@ -354,7 +354,7 @@ class ExpressionsCompilerTest {
 
 
     @Test
-    void testShifts() throws CompileException {
+    void testShifts() throws SyntaxException {
         Parser parser = new Parser();
         ExpressionsCompiler ec = new ExpressionsCompiler(parser);
 
@@ -371,27 +371,27 @@ class ExpressionsCompilerTest {
     }
 
     @Test
-    void testAssignAndShift() throws CompileException {
+    void testAssignAndShift() throws SyntaxException {
         test("r16 = r18 << 3", "mov\tr16, r18\nlsl\tr16\nlsl\tr16\nlsl\tr16");
     }
 
     @Test
-    void testArrayPortsRead() throws CompileException {
+    void testArrayPortsRead() throws SyntaxException {
         test("r0 = io[PINC]", "in\tr0, PINC");
     }
 
     @Test
-    void testArrayPortsWrite() throws CompileException {
+    void testArrayPortsWrite() throws SyntaxException {
         test("io[PORTC] = r0", "out\tPORTC, r0");
     }
 
     @Test
-    void testArrayWordPortsRead() throws CompileException {
+    void testArrayWordPortsRead() throws SyntaxException {
         test("r0.r1 = iow[OCR1B]", "in\tr0, OCR1BH\nin\tr1, OCR1BL");
     }
 
     @Test
-    void testArrayWordPortsWrite() throws CompileException {
+    void testArrayWordPortsWrite() throws SyntaxException {
         test("iow[OCR1B] = r0.r1", "out\tOCR1BH, r0\nout\tOCR1BL, r1");
     }
 
@@ -415,7 +415,7 @@ class ExpressionsCompilerTest {
     }
 
     @Test
-    void testArrayMemRead() throws CompileException {
+    void testArrayMemRead() throws SyntaxException {
         test("r16 = ram[Z]", "ld\tr16, Z");
         test("r16 = ram[X]", "ld\tr16, X");
         test("r0 = ram[Z++]", "ld\tr0, Z+");
@@ -424,7 +424,7 @@ class ExpressionsCompilerTest {
     }
 
     @Test
-    void testArrayMemWrite() throws CompileException {
+    void testArrayMemWrite() throws SyntaxException {
         test("ram[X] = r0", "st\tX, r0");
         test("ram[Y] = r0", "st\tY, r0");
         test("ram[Z] = r0", "st\tZ, r0");
@@ -455,7 +455,7 @@ class ExpressionsCompilerTest {
     }
 
     @Test
-    void testArrayPrgRead() throws CompileException {
+    void testArrayPrgRead() throws SyntaxException {
         test("r0 = prg[Z]", "lpm");
         test("r10 = prg[Z]", "lpm\tr10, Z");
         test("r20 = prg[Z++]", "lpm\tr20, Z+");
@@ -480,7 +480,7 @@ class ExpressionsCompilerTest {
 
 
     @Test
-    void testArrayPortBits() throws CompileException {
+    void testArrayPortBits() throws SyntaxException {
         test("io[PORTA].0 = 1", "sbi\tPORTA, 0");
         test("io[DDRC].5 = 0", "cbi\tDDRC, 5");
     }
@@ -495,49 +495,49 @@ class ExpressionsCompilerTest {
     }
 
     @Test
-    void testFlagsModify() throws CompileException {
+    void testFlagsModify() throws SyntaxException {
         test("F_CARRY = 0", "clc");
         test("F_CARRY = 1", "sec");
     }
 
     @Test
-    void testMoveIoToFlag() throws CompileException {
+    void testMoveIoToFlag() throws SyntaxException {
         test("F_CARRY = io[PINC].4", "clc\nsbic\tPINC, 4\nsec");
     }
 
     @Test
-    void testMoveNegIoToFlag() throws CompileException {
+    void testMoveNegIoToFlag() throws SyntaxException {
         test("F_CARRY = !io[PINC].4", "clc\nsbis\tPINC, 4\nsec");
     }
 
     @Test
-    void testMoveRegBitToIo() throws CompileException {
+    void testMoveRegBitToIo() throws SyntaxException {
         test("io[PORTC].0 = r16[4]", "sbrs\tr16, 4\ncbi\tPORTC, 0\nsbrc\tr16, 4\nsbi\tPORTC, 0");
     }
 
     @Test
-    void testMoveInverseRegBitToIo() throws CompileException {
+    void testMoveInverseRegBitToIo() throws SyntaxException {
         test("io[PORTC].0 = !r16[4]", "sbrs\tr16, 4\nsbi\tPORTC, 0\nsbrc\tr16, 4\ncbi\tPORTC, 0");
     }
 
     @Test
-    void testMoveToBitCopyFlag() throws CompileException {
+    void testMoveToBitCopyFlag() throws SyntaxException {
         test("F_BIT_COPY = r16[3]", "bst\tr16, 3");
     }
 
     @Test
-    void testMoveFromBitCopyFlag() throws CompileException {
+    void testMoveFromBitCopyFlag() throws SyntaxException {
         test("r16[1] = F_BIT_COPY", "bld\tr16, 1");
     }
 
     @Test
-    void testSetRegisterBit() throws CompileException {
+    void testSetRegisterBit() throws SyntaxException {
         test("r16[0] = 1", "sbr\tr16, 0b00000001");
         test("r16[7] = 1", "sbr\tr16, 0b10000000");
     }
 
     @Test
-    void testClearRegisterBit() throws CompileException {
+    void testClearRegisterBit() throws SyntaxException {
         test("r16[0] = 0", "cbr\tr16, 0b00000001");
         test("r16[7] = 0", "cbr\tr16, 0b10000000");
     }
@@ -562,8 +562,16 @@ class ExpressionsCompilerTest {
 
 
     @Test
-    void testFlagMath() throws CompileException {
+    void testFlagMath() throws SyntaxException {
 //        test("r10 += r10 + F_CARRY", "adc\tr10, r0");
     }
+
+    @Test
+    void testWrongLowRegisterOperationError() {
+        assertTrue(hasError("r1 = 5"));
+        assertTrue(hasError("r1 |= 5"));
+        assertTrue(hasError("r1 &= 5"));
+    }
+
 
 }

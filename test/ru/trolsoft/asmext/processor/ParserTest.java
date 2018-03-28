@@ -227,13 +227,13 @@ class ParserTest {
     void testProcWitchArgs() throws SyntaxException {
         parser = new Parser();
         test(a(
-                ".proc my_proc(x: r12)", ".endproc"), a("my_proc:", "", ""));
+                ".proc my_proc(x: r22)", ".endproc"), a("my_proc:", "", ""));
         assertTrue(parser.procedures.containsKey("my_proc"));
         assertEquals(1, parser.procedures.get("my_proc").args.size());
         assertTrue(parser.procedures.get("my_proc").args.containsKey("x"));
-        assertTrue(parser.procedures.get("my_proc").args.get("x").register.isRegister("r12"));
+        assertTrue(parser.procedures.get("my_proc").args.get("x").register.isRegister("r22"));
 
-        test(a("rcall my_proc (3)"), a("", "ldi r12, 3", "rcall my_proc"));
+        test(a("rcall my_proc (3)"), a("", "ldi r22, 3", "rcall my_proc"));
     }
 
     @Test
@@ -374,9 +374,9 @@ class ParserTest {
         assertEquals(parser.constants.get("abc").value, "123");
         assertEquals(parser.constants.get("abc").type, Constant.Type.EQU);
         assertTrue(parser.getOutput().size() == 1);
-        parser.parseLine("r0 = abc");
+        parser.parseLine("r20 = abc");
         parser.getOutput().startNewLine();
-        assertTrue(parser.getOutput().get(1).endsWith("ldi\tr0, 123"));
+        assertTrue(parser.getOutput().get(1).endsWith("ldi\tr20, 123"));
 
         parser = new Parser();
         parser.gcc = true;
@@ -385,9 +385,9 @@ class ParserTest {
         assertEquals(parser.constants.get("abc").value, "123");
         assertEquals(parser.constants.get("abc").type, Constant.Type.EQU);
         assertTrue(parser.getOutput().size() == 0);
-        parser.parseLine("r0 = abc");
+        parser.parseLine("r20 = abc");
         parser.getOutput().startNewLine();
-        assertTrue(parser.getOutput().get(0).endsWith("ldi\tr0, 123"));
+        assertTrue(parser.getOutput().get(0).endsWith("ldi\tr20, 123"));
 
         parser = new Parser();
         parser.gcc = true;
@@ -396,9 +396,9 @@ class ParserTest {
         assertEquals(parser.constants.get("aBc").value, "123");
         assertEquals(parser.constants.get("aBc").type, Constant.Type.EQU);
         assertTrue(parser.getOutput().size() == 0);
-        parser.parseLine("r0 = aBc");
+        parser.parseLine("r20 = aBc");
         parser.getOutput().startNewLine();
-        assertTrue(parser.getOutput().get(0).endsWith("ldi\tr0, 123"));
+        assertTrue(parser.getOutput().get(0).endsWith("ldi\tr20, 123"));
 
         parser.parseLine("#define CONST_X\t10");
         assertTrue(parser.constants.containsKey("CONST_X"));
@@ -419,12 +419,12 @@ class ParserTest {
         Parser parser = new Parser(true);
         parser.parseLine(".equ io_offset = 0x23");
         parser.parseLine(".equ porta = io_offset + 2");
-        parser.parseLine("r0 = porta");
-        assertEquals("ldi\tr0, (0x23+2)", parser.getOutput().getLastLine());
+        parser.parseLine("r20 = porta");
+        assertEquals("ldi\tr20, (0x23+2)", parser.getOutput().getLastLine());
 
         parser.parseLine(".equ portb = ((porta) + 1)");
-        parser.parseLine("r1 = portb");
-        assertEquals("ldi\tr1, ((0x23+2)+1)", parser.getOutput().getLastLine());
+        parser.parseLine("r21 = portb");
+        assertEquals("ldi\tr21, ((0x23+2)+1)", parser.getOutput().getLastLine());
 
         parser = new Parser(true);
         parser.parseLine(".equ a = 12");
@@ -526,8 +526,8 @@ class ParserTest {
         parser.parseLine(".equ FE=1");
         parser.parseLine(".equ DOR=0");
         parser.parseLine(".equ PE=4");
-        parser.parseLine("r11 &= (1<<FE)|(1<<DOR)|(1<<PE)");
-        assertEquals("andi\tr11, (1<<FE)|(1<<DOR)|(1<<PE)", parser.getOutput().getLastLine());
+        parser.parseLine("r21 &= (1<<FE)|(1<<DOR)|(1<<PE)");
+        assertEquals("andi\tr21, (1<<FE)|(1<<DOR)|(1<<PE)", parser.getOutput().getLastLine());
 
         // rmp = cPre2|(1<<WGM21)		; CTC mode and prescaler
         // TODO

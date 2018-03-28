@@ -1,49 +1,54 @@
-package ru.trolsoft.asmext.processor;
+package ru.trolsoft.asmext.compiler;
 
 import ru.trolsoft.asmext.data.Argument;
 import ru.trolsoft.asmext.data.Procedure;
 import ru.trolsoft.asmext.files.OutputFile;
+import ru.trolsoft.asmext.processor.*;
+import ru.trolsoft.asmext.utils.AsmUtils;
 import ru.trolsoft.asmext.utils.TokenString;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static ru.trolsoft.asmext.processor.AsmInstr.BRANCH_IF_FLAG_CLEAR_MAP;
-import static ru.trolsoft.asmext.processor.AsmInstr.BRANCH_IF_FLAG_SET_MAP;
+import static ru.trolsoft.asmext.compiler.AsmInstr.BRANCH_IF_FLAG_CLEAR_MAP;
+import static ru.trolsoft.asmext.compiler.AsmInstr.BRANCH_IF_FLAG_SET_MAP;
+import static ru.trolsoft.asmext.compiler.Cmd.*;
 
-class Compiler {
+public class Compiler extends BaseCompiler {
 
-    private final Parser parser;
     private final ExpressionsCompiler expressionsCompiler;
 
 
-    Compiler(Parser parser) {
-        this.parser = parser;
+    public Compiler(Parser parser) {
+        super(parser);
         this.expressionsCompiler = new ExpressionsCompiler(parser);
     }
 
-    void compile(TokenString src, OutputFile out) throws SyntaxException {
+
+    public void compile(TokenString src, OutputFile out) throws SyntaxException {
         if (src.isEmpty()) {
             return;
         }
+        setup(src, out);
         switch (src.getFirstToken()) {
             case "push":
             case "pop":
-                compilePushPop(src, parser.buildExpression(src), out);
+                compilePushPop(parser.buildExpression(src));
                 break;
             case "call":
             case "rcall":
             case "jmp":
             case "rjmp":
-                compileCall(src, parser.buildExpression(src), out);
+                compileCall(parser.buildExpression(src));
                 break;
             case "if":
-                if (compileIf(src, parser.buildExpression(src), out)) {
+                if (compileIf(parser.buildExpression(src))) {
                     break;
                 }
             default:
-                compileDefault(src, out);
+                compileDefault();
         }
+        cleanup();
     }
 
 
@@ -120,19 +125,21 @@ class Compiler {
     private void checkCallArguments(Procedure procedure, List<Argument> args) throws SyntaxException {
         for (Argument arg : args) {
             if (!procedure.args.containsKey(arg.name)) {
-                throw new SyntaxException("wrong argument: " + arg.name);
+                wrongArgumentError(arg.name);
             }
         }
     }
 
-    private void compileCall(TokenString src, Expression expr, OutputFile out) throws SyntaxException {
+
+    private void compileCall(Expression expr) throws SyntaxException {
         List<Argument> args = new ArrayList<>();
         Procedure procedure = parseProcedureArgs(args, expr);
         if (procedure == null) {
             if (expr.operatorsCount("(") > 0) {
                 undefinedProcedureError(expr.get(1).asString());
             }
-            out.appendCommand(src, expr.getFirst().asString(), expr.get(1));
+            Cmd cmd = Cmd.fromToken(expr.getFirst());
+            addCommand(cmd, expr.get(1));
             return;
         }
         checkCallArguments(procedure, args);
@@ -148,7 +155,8 @@ class Compiler {
                 out.startNewLine().append(src.getIndent()).append("; ").append(argName).append(" = ").append(value);
             }
         } // for args
-        out.appendCommand(src, src.getFirstToken(), procedure.name);
+        Cmd cmd = Cmd.fromStr(src.getFirstToken());
+        addCommand(cmd, procedure.name);
     }
 
     private void addArgumentAssign(OutputFile out, Token arg, Expression value) throws SyntaxException {
@@ -158,31 +166,36 @@ class Compiler {
 
         try {
             if (!expressionsCompiler.compile(new TokenString(""), value, out)) {
-                throw new SyntaxException("wrong value: '" + value + "'");
+                wrongValueError(value.toString());
             }
             //out.getLastLineBuilder().append("\t; ").append(argName).append(" = ").append(value);
-        } catch (ExpressionsCompiler.CompileException e) {
-            throw new SyntaxException(e.getMessage());
+        } catch (SyntaxException e) {
+            error(e.getMessage(), e);
         }
     }
 
 
-    private void compilePushPop(TokenString src, Expression expr, OutputFile out) throws SyntaxException {
-        String cmd = expr.removeFirst().asString();
+    private void compilePushPop(Expression expr) throws SyntaxException {
+        Cmd cmd = Cmd.fromToken(expr.removeFirst());
         for (Token t : expr) {
             checkRegister(t);
-            out.appendCommand(src, cmd, t);
+            addCommand(cmd, t);
         }
     }
 
 
-    private boolean compileIf(TokenString src, Expression expr, OutputFile out) throws SyntaxException {
+    private boolean compileIf(Expression expr) throws SyntaxException {
         // if (a || b || c) action -> if (a) action, if (b) action, if (c) action
-        return compileIf(src, expr, out, false);
+        return compileIf(expr, false);
     }
 
-    boolean compileIf(TokenString src, Expression expr, OutputFile out, boolean inverse) throws SyntaxException {
-        checkMinLength(expr, 5);
+    public boolean compileIf(TokenString src, Expression expr, boolean inverse, OutputFile out) throws SyntaxException {
+        setup(src, out);
+        return compileIf(expr, inverse);
+    }
+
+    private boolean compileIf(Expression expr, boolean inverse) throws SyntaxException {
+        checkExpressionMinLength(expr, 5);
         boolean signed;
         Token t = expr.get(1);
 
@@ -196,28 +209,30 @@ class Compiler {
             signed = false;
         }
         Token label = null;
-        String command = null;
+        Cmd command = null;
+        AsmUtils.Instruction instruction = null;
         int closeBracketLastIndex;
+        // TODO убрать частные случаи инструкций
         if (expr.getLast(1).isKeyword("goto") || "rjmp".equals(expr.getLast(1).asString())) {
-            command = "rjmp";
+            command = RJMP;
             label = expr.getLast();
             closeBracketLastIndex = 2;
         } else if ("rcall".equals(expr.getLast(1).asString())) {
-            command = "rcall";
+            command = RCALL;
             label = expr.getLast();
             closeBracketLastIndex = 2;
         } else if ("ret".equals(expr.getLast().asString())) {
-            command = "ret";
+            command = RET;
             closeBracketLastIndex = 1;
         } else if ("reti".equals(expr.getLast().asString())) {
-            command = "reti";
+            command = RETI;
             closeBracketLastIndex = 1;
         } else if ("continue".equals(expr.getLast().asString()) && parser.getCurrentCycleBlock() != null) {
-            command = "rjmp";
+            command = RJMP;
             label = new Token(Token.TYPE_OTHER, parser.getLastBlock().getLabelStart());
             closeBracketLastIndex = 1;
         } else if ("break".equals(expr.getLast().asString()) && parser.getCurrentCycleBlock() != null) {
-            command = "rjmp";
+            command = RJMP;
             label = new Token(Token.TYPE_OTHER, parser.getLastBlock().buildEndLabel());
             closeBracketLastIndex = 1;
         } else {
@@ -243,8 +258,8 @@ class Compiler {
                     if (tempOut.size() != 1) {
                         invalidExpressionError("too big, one command expected");
                     }
-                    command = tempOut.get(0);
-                } catch (ExpressionsCompiler.CompileException e) {
+                    instruction = AsmUtils.parseLine(tempOut.get(0));
+                } catch (SyntaxException e) {
                     invalidExpressionError();
                 }
                 closeBracketLastIndex = expr.size() - closeBracketLastIndex - 1;
@@ -264,18 +279,39 @@ class Compiler {
             if (label == null) {
                 unsupportedOperationError();
             }
-            compileIfFlagExpression(src, inverse, a1, label, out);
+            compileIfFlagExpression(inverse, a1, label);
         } else if (a1.isOperator("!") && a2.isFlag()) {
-            compileIfFlagExpression(src, !inverse, a2, label, out);
+            compileIfFlagExpression(!inverse, a2, label);
         } else if (a1.isRegisterBit()) {
-            compileIfRegisterBitExpression(src, inverse, a1, command, label, out);
+            if (instruction != null) {
+                compileIfRegisterBitExpression(inverse, a1, instruction.getCommand(), instruction.getArg1Token(), instruction.getArg2Str());
+            } else {
+                compileIfRegisterBitExpression(inverse, a1, command, label, null);
+            }
         } else if (a1.isOperator("!") && a2.isRegisterBit()) {
-            compileIfRegisterBitExpression(src, !inverse, a2, command, label, out);
+            if (instruction != null) {
+                compileIfRegisterBitExpression(!inverse, a2, instruction.getCommand(), instruction.getArg1Token(), instruction.getArg2Str());
+            } else {
+                compileIfRegisterBitExpression(!inverse, a2, command, label, null);
+            }
         } else if (a1.isArrayIo() && a2.isOperator(".")) {
-            compileIfIoBitExpression(src, inverse, a1, a3, command, label, out);
+            if (instruction != null) {
+                compileIfIoBitExpression(inverse, a1, a3, instruction.getCommand(), instruction.getArg1Token(), instruction.getArg2Str());
+            } else {
+                compileIfIoBitExpression(inverse, a1, a3, command, label, null);
+            }
         } else if (a1.isOperator("!") && a2.isArrayIo() && a3.isOperator(".") && a4 != null) {
-            compileIfIoBitExpression(src, !inverse, a2, a4, command, label, out);
+            if (instruction != null) {
+                compileIfIoBitExpression(!inverse, a2, a4, instruction.getCommand(), instruction.getArg1Token(), instruction.getArg2Str());
+            } else {
+                compileIfIoBitExpression(!inverse, a2, a4, command, label, null);
+            }
+        } else if (instruction != null && a1.isRegister() && a2.isOperator("!=") && a3.isRegister() && a4 != null && a4.isOperator(")")) {
+            compileIfTwoRegsNotEquals(a1, a3, instruction);
         } else {
+            if (instruction != null || a4 == null || !a4.isOperator(")")) {
+                invalidExpressionError();
+            }
             out.addComment(src);
             String operation = a2.asString();
             if (inverse) {
@@ -284,9 +320,15 @@ class Compiler {
             if (label == null) {
                 unsupportedOperationError();
             }
-            compileIfBinaryExpression(src, signed, operation, a1, a3, label, out);
+
+            compileIfBinaryExpression(signed, operation, a1, a3, label);
         }
         return true;
+    }
+
+    private void compileIfTwoRegsNotEquals(Token reg1, Token reg2, AsmUtils.Instruction instruction) throws SyntaxException {
+        addCommand(CPSE, reg1, reg2);
+        addCommand(instruction);
     }
 
     private String inverseBinaryCompareOperation(String operation) {
@@ -301,51 +343,51 @@ class Compiler {
         throw new RuntimeException("can't inverse operation: " + operation);
     }
 
-    private void compileIfFlagExpression(TokenString src, boolean not, Token flag, Token label, OutputFile out) {
-        String cmd = not ? BRANCH_IF_FLAG_CLEAR_MAP.get(flag.asString()) : BRANCH_IF_FLAG_SET_MAP.get(flag.asString());
-        out.appendCommand(src, cmd, label);
+    private void compileIfFlagExpression(boolean not, Token flag, Token label) throws SyntaxException {
+        Cmd cmd = not ? BRANCH_IF_FLAG_CLEAR_MAP.get(flag.asString()) : BRANCH_IF_FLAG_SET_MAP.get(flag.asString());
+        addCommand(cmd, label);
     }
 
-    private void compileIfRegisterBitExpression(TokenString src, boolean not, Token regBit, String cmd, Token label, OutputFile out) throws SyntaxException {
+    private void compileIfRegisterBitExpression(boolean not, Token regBit, Cmd cmd, Token label, String arg2) throws SyntaxException {
         Token index = regBit.getBitIndex();
         checkBitIndex(index);
-        out.appendCommand(src, not ? "sbrs" : "sbrc", regBit.asString(), index.asString());
-        out.appendCommand(src, cmd, label);
+        addCommand(not ? SBRS : SBRC, regBit.asString(), index.asString());
+        addCommand(cmd, label, arg2);
     }
 
-    private void compileIfIoBitExpression(TokenString src, boolean not, Token ioPort, Token index, String cmd, Token label, OutputFile out) throws SyntaxException {
+    private void compileIfIoBitExpression(boolean not, Token ioPort, Token index, Cmd cmd, Token label, String arg2) throws SyntaxException {
         checkBitIndex(index);
-        out.appendCommand(src, not ? "sbis" : "sbic", arrayIndexToPort(ioPort), index.asString());
-        out.appendCommand(src, cmd, label);
+        addCommand(not ? SBIS : SBIC, arrayIndexToPort(ioPort), index.asString());
+        addCommand(cmd, label, arg2);
     }
 
-    private void compileIfBinaryExpression(TokenString src, boolean signed, String operation, Token left, Token right, Token label, OutputFile out) throws SyntaxException {
-        String jumpCmd;
+    private void compileIfBinaryExpression(boolean signed, String operation, Token left, Token right, Token label) throws SyntaxException {
+        Cmd jumpCmd;
         //  BRCS = BRLO, BRCC = BRSH
         switch (operation) {
             case "==":
             case "!=":
-                jumpCmd = "==".equals(operation) ? "breq" : "brne";
-                addCompareInstruction(src, left, right, out);
-                out.appendCommand(src, jumpCmd, label);
+                jumpCmd = "==".equals(operation) ? BREQ : BRNE;
+                addCompareInstruction(left, right);
+                addCommand(jumpCmd, label);
                 break;
             case "<":
-                addCompareInstruction(src, left, right, out);
+                addCompareInstruction(left, right);
                 if (right.isNumber() && right.getNumberValue() == 0) {
-                    jumpCmd = "brmi";
+                    jumpCmd = BRMI;
                 } else  {
-                    jumpCmd = signed ? "brlt" : "brlo";
+                    jumpCmd = signed ? BRLT : BRLO;
                 }
-                out.appendCommand(src, jumpCmd, label);
+                addCommand(jumpCmd, label);
                 break;
             case ">=":
-                addCompareInstruction(src, left, right, out);
+                addCompareInstruction(left, right);
                 if (right.isNumber() && right.getNumberValue() == 0) {
-                    jumpCmd = "brpl";
+                    jumpCmd = BRPL;
                 } else  {
-                    jumpCmd = signed ? "brge" : "brsh";
+                    jumpCmd = signed ? BRGE : BRSH;
                 }
-                out.appendCommand(src, jumpCmd, label);
+                addCommand(jumpCmd, label);
                 break;
 
             case ">":
@@ -355,13 +397,13 @@ class Compiler {
                 if (right.isAnyConst()) {
                     // TODO calculate value if possible
                     right = new Token(Token.TYPE_CONST_EXPRESSION, right.asString() + "+1");
-                    addCompareInstruction(src, left, right, out);
-                    jumpCmd = signed ? "brge" : "brsh";
+                    addCompareInstruction(left, right);
+                    jumpCmd = signed ? BRGE : BRSH;
                 } else {
-                    addCompareInstruction(src, right, left, out);
-                    jumpCmd = signed ? "brlt" : "brlo";
+                    addCompareInstruction(right, left);
+                    jumpCmd = signed ? BRLT : BRLO;
                 }
-                out.appendCommand(src, jumpCmd, label);
+                addCommand(jumpCmd, label);
                 break;
             case "<=":
                 // x <= y  ->  y >= x
@@ -369,13 +411,13 @@ class Compiler {
                 if (right.isAnyConst()) {
                     // TODO calculate value if possible
                     right = new Token(Token.TYPE_CONST_EXPRESSION, right.asString() + "-1");
-                    addCompareInstruction(src, left, right, out);
-                    jumpCmd = signed ? "brlt" : "brlo";
+                    addCompareInstruction(left, right);
+                    jumpCmd = signed ? BRLT : BRLO;
                 } else {
-                    addCompareInstruction(src, right, left, out);
-                    jumpCmd = signed ? "brge" : "brsh";
+                    addCompareInstruction(right, left);
+                    jumpCmd = signed ? BRGE : BRSH;
                 }
-                out.appendCommand(src, jumpCmd, label);
+                addCommand(jumpCmd, label);
                 break;
             default:
                 unsupportedOperationError();
@@ -383,13 +425,13 @@ class Compiler {
 
     }
 
-    private void addCompareInstruction(TokenString src, Token left, Token right, OutputFile out) throws SyntaxException {
+    private void addCompareInstruction(Token left, Token right) throws SyntaxException {
         if (left.isRegister() && right.isNumber() && right.getNumberValue() == 0) {
-            out.appendCommand(src, "tst", left);
+            addCommand(TST, left);
         } else if (left.isRegister() && right.isRegister()) {
-            out.appendCommand(src, "cp", left, right);
+            addCommand(CP, left, right);
         } else if (left.isRegister() && right.isAnyConst()) {
-            out.appendCommand(src, "cpi", left, right);
+            addCommand(CPI, left, right);
 //        } else if (left.isRegGroup() && right.isAnyConst()) {
 //        } else if (left.isPair() && right.isAnyConst()) {
         } else if ((left.isRegGroup() || left.isPair()) && (right.isRegGroup() || right.isPair())) {
@@ -400,8 +442,8 @@ class Compiler {
                 int j = left.size() - 1 - i;
                 Token reg1 = left.getReg(j);
                 Token reg2 = right.getReg(j);
-                String cmd = i == 0 ? "cp" : "cpc";
-                out.appendCommand(src, cmd, reg1, reg2);
+                Cmd cmd = i == 0 ? CP : CPC;
+                addCommand(cmd, reg1, reg2);
             }
         } else {
             unsupportedOperationError();
@@ -409,7 +451,7 @@ class Compiler {
     }
 
 
-    private boolean canBeCompiled(TokenString src) {
+    private static boolean canBeCompiled(TokenString src) {
         String first = src.getFirstToken();
         if (src.firstTokenIs(".") || ParserUtils.isInstruction(first) || first.startsWith("#")) {
             return false;
@@ -425,73 +467,16 @@ class Compiler {
     }
 
 
-    private void compileDefault(TokenString src, OutputFile out) throws SyntaxException {
+    private void compileDefault() throws SyntaxException {
         if (!canBeCompiled(src)) {
             out.add(src);
             return;
         }
-        try {
-            if (!expressionsCompiler.compile(src, parser.buildExpression(src), out)) {
-                out.add(src);
-            }
-        } catch (ExpressionsCompiler.CompileException e) {
-            throw new SyntaxException(e.getMessage() != null ? e.getMessage() : "expression error", e);
+        if (!expressionsCompiler.compile(src, parser.buildExpression(src), out)) {
+            out.add(src);
         }
     }
 
-    private static void checkBitIndex(Token t) throws SyntaxException {
-        if (t.isNumber()) {
-            int val = t.getNumberValue();
-            if (val < 0 || val > 7) {
-                throw new SyntaxException("wrong index: " + val);
-            }
-        } else if (!t.isAnyConst() && !t.isSomeString()) {
-            throw new SyntaxException("bit offset constant expected: " + t);
-        }
-    }
 
-    private String arrayIndexToPort(Token tokenIndex) throws SyntaxException {
-        Token.ArrayIndex index = tokenIndex.getIndex();
-        if (index.hasModifier() || index.isPair()) {
-            throw new SyntaxException("io");
-        }
-        return parser.gcc ? "_SFR_IO_ADDR(" + index.getName() + ")" : index.getName();
-    }
-
-    private static void checkRegister(Token t) throws SyntaxException {
-        if (!t.isRegister()) {
-            throw new SyntaxException("register expected: " + t);
-        }
-    }
-
-    private static void checkMinLength(Expression expr, int minLength) throws SyntaxException {
-        if (expr.size() < minLength) {
-            invalidExpressionError();
-        }
-    }
-
-    private static void invalidExpressionError() throws SyntaxException {
-        throw new SyntaxException("invalid expression");
-    }
-
-    private static void invalidExpressionError(String msg) throws SyntaxException {
-        throw new SyntaxException("invalid expression: " + msg);
-    }
-
-    private static void unsupportedOperationError() throws SyntaxException {
-        throw new SyntaxException("unsupported operation");
-    }
-
-    private static void sizesMismatchError() throws  SyntaxException {
-        throw new SyntaxException("sizes mismatch");
-    }
-
-    private static void wrongCallSyntaxError() throws SyntaxException {
-        throw new SyntaxException("wrong call/jump syntax");
-    }
-
-    private static void undefinedProcedureError(String name) throws SyntaxException {
-        throw new SyntaxException("undefined procedure: \"" + name + '"');
-    }
 
 }

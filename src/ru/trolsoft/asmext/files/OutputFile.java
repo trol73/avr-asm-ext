@@ -112,7 +112,20 @@ public class OutputFile {
     }
 
     private StringBuilder appendCommand(String indent, String cmd, String arg1, String arg2) {
-        return startNewLine().append(indent).append(cmd).append('\t').append(arg1).append(", ").append(arg2);
+        StringBuilder sb = startNewLine();
+        if (indent != null) {
+            sb.append(indent);
+        }
+        sb.append(cmd);
+        if (arg1 != null) {
+            sb.append('\t');
+            sb.append(arg1);
+        }
+        if (arg2 != null) {
+            sb.append(", ");
+            sb.append(arg2);
+        }
+        return sb;
     }
 
     private StringBuilder appendCommand(String indent, String cmd, String arg) {

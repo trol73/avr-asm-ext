@@ -1,35 +1,25 @@
-package ru.trolsoft.asmext.processor;
+package ru.trolsoft.asmext.compiler;
 
-import ru.trolsoft.asmext.data.Variable;
 import ru.trolsoft.asmext.data.Variable.Type;
 import ru.trolsoft.asmext.files.OutputFile;
+import ru.trolsoft.asmext.processor.*;
 import ru.trolsoft.asmext.utils.TokenString;
 
-import static ru.trolsoft.asmext.processor.AsmInstr.CLEAR_FLAG_MAP;
-import static ru.trolsoft.asmext.processor.AsmInstr.SET_FLAG_MAP;
+import static ru.trolsoft.asmext.compiler.AsmInstr.CLEAR_FLAG_MAP;
+import static ru.trolsoft.asmext.compiler.AsmInstr.SET_FLAG_MAP;
+import static ru.trolsoft.asmext.compiler.Cmd.*;
 
-class ExpressionsCompiler {
+public class ExpressionsCompiler extends BaseCompiler {
 
-    private static final String[] STRING_OF_ZERO = {"", "0", "00", "000", "0000", "00000", "000000", "0000000", "00000000", "000000000", "0000000000"};
-
-
-    Parser parser;
-
-    ExpressionsCompiler(Parser parser) {
-        this.parser = parser;
+    public ExpressionsCompiler(Parser parser) {
+        super(parser);
     }
 
-    static class CompileException extends Exception {
-
-        CompileException(String msg) {
-            super(msg);
-        }
-    }
-
-    boolean compile(TokenString src, Expression expr, OutputFile out) throws CompileException {
+    public boolean compile(TokenString src, Expression expr, OutputFile out) throws SyntaxException {
         if (expr.size() < 2) {
             return false;
         }
+        setup(src, out);
         Token operation = expr.get(1);
         Token dest = expr.get(0);
         if (dest.isRegister() && expr.size() != 3) {
@@ -44,17 +34,17 @@ class ExpressionsCompiler {
         int moveCount = expr.operatorsCount("=");
         try {
             if (moveCount > 1) {
-                return compileMultiMove(src, expr, out, moveCount);
+                return compileMultiMove(expr, moveCount);
             }
-            return compileExpr(src, expr, out);
+            return compileExpr(expr);
         } catch (RuntimeException e) {
-e.printStackTrace();
-            throw new CompileException("internal error: " + e.getMessage());
+            internalError(e.getMessage(), e);
+            return false;
         }
     }
 
 
-    private boolean compileMultiMove(TokenString src, Expression expr, OutputFile out, int moveCount) throws CompileException {
+    private boolean compileMultiMove(Expression expr, int moveCount) throws SyntaxException {
         // a = b = c -> b = c, a = b
         if (expr.get(0).isOperator("=")) {
             unexpectedExpressionError();
@@ -77,15 +67,15 @@ e.printStackTrace();
                 }
                 lastExpression.add(0, t);
             }
-            if (!compileExpr(src, lastExpression, out)) {
+            if (!compileExpr(lastExpression)) {
                 return false;
             }
             expr.removeLast(len+1);
         } // for exprNumber
-        return compileExpr(src, expr, out);
+        return compileExpr(expr);
     }
 
-    private boolean compileExpr(TokenString src, Expression expr, OutputFile out) throws CompileException {
+    private boolean compileExpr(Expression expr) throws SyntaxException {
         Token dest = expr.get(0);
         Token operation = expr.get(1);
         if (!operation.isOperator()) {
@@ -95,17 +85,17 @@ e.printStackTrace();
             case "=":
                 expr.removeFirst(2);
                 if (dest.isRegister()) {
-                    moveToReg(src, dest, expr, out);
+                    moveToReg(dest, expr);
                 } else if (dest.isRegGroup() || dest.isPair()) {
-                    moveToGroupOrPair(src, dest, expr, out);
+                    moveToGroupOrPair(dest, expr);
                 } else if (dest.isVar()) {
-                    moveToVar(src, dest, expr, out);
+                    moveToVar(dest, expr);
                 } else if (dest.isArray()) {
-                    moveToArray(src, dest, expr, out);
+                    moveToArray(dest, expr);
                 } else if (dest.isFlag()) {
-                    moveToFlag(src, dest, expr, out);
+                    moveToFlag(dest, expr);
                 } else if (dest.isRegisterBit()) {
-                    moveToRegBit(src, dest, expr, out);
+                    moveToRegBit(dest, expr);
                 } else {
                     unexpectedExpressionError();
                 }
@@ -115,7 +105,7 @@ e.printStackTrace();
                 if (expr.size() != 2) {
                     unexpectedExpressionError();
                 }
-                incDecReg(src, dest, operation, out);
+                incDecReg(dest, operation);
                 return true;
             case "+=":
             case "-=":
@@ -124,18 +114,18 @@ e.printStackTrace();
                         unsupportedOperationError();
                     }
                     expr.removeFirst(2);
-                    addPair(src, dest, operation, expr.get(0), out);
+                    addPair(dest, operation, expr.getFirst());
                 } else if (dest.isRegGroup() && expr.size() == 3) {
                     Token arg = expr.get(2);
                     if (arg.isRegGroup(dest.size())) {
-                        addRegGroup(src, dest, operation, arg, out);
+                        addRegGroup(dest, operation, arg);
                     } else if (arg.isAnyConst()) {
-                        addReg(src, dest, operation, arg, out);
+                        addReg(dest, operation, arg);
                     } else {
                         unexpectedExpressionError();
                     }
                 } else if (dest.isRegister() && expr.size() == 3) {
-                    addReg(src, dest, operation, expr.get(2), out);
+                    addReg(dest, operation, expr.get(2));
                 } else {
                     unexpectedExpressionError();
                 }
@@ -144,7 +134,7 @@ e.printStackTrace();
                 if (expr.size() != 3) {
                     unsupportedOperationError();
                 } else if (expr.size() == 3) {
-                    andReg(src, dest, expr.get(2), out);
+                    andReg(dest, expr.get(2));
                 } else {
                     unexpectedExpressionError();
                 }
@@ -153,28 +143,28 @@ e.printStackTrace();
                 if (expr.size() != 3) {
                     unsupportedOperationError();
                 } else if (dest.isRegister()) {// (expr.size() == 3) {
-                    orReg(src, dest, expr.get(2), out);
+                    orReg(dest, expr.get(2));
                 } else {
                     unexpectedExpressionError();
                 }
                 return true;
             case "<<=":
                 if (expr.size() == 3) {
-                    shlRegs(src, dest, expr.get(2), out);
+                    shlRegs(dest, expr.get(2));
                 } else {
                     unexpectedExpressionError();
                 }
                 return true;
             case ">>=":
                 if (expr.size() == 3) {
-                    shrRegs(src, dest, expr.get(2), out);
+                    shrRegs(dest, expr.get(2));
                 } else {
                     unexpectedExpressionError();
                 }
                 return true;
             case ".":
                 if (dest.getType() == Token.TYPE_ARRAY_IO) {
-                    setBitInPort(src, dest, expr, out);
+                    setBitInPort(dest, expr);
                 } else {
                     unsupportedOperationError();
                 }
@@ -186,7 +176,7 @@ e.printStackTrace();
     }
 
 
-    private void tryToMergeConstants(Expression expr) throws CompileException {
+    private void tryToMergeConstants(Expression expr) throws SyntaxException {
         if (parser.gcc || expr.isEmpty() || !expr.get(0).isSomeString("BYTE1", "BYTE2", "BYTE3", "BYTE4", "HIGH", "LOW")) {
             return;
         }
@@ -218,7 +208,7 @@ e.printStackTrace();
     }
 
 
-    private void moveToReg(TokenString src, Token dest, Expression expr, OutputFile out) throws CompileException {
+    private void moveToReg(Token dest, Expression expr) throws SyntaxException {
         if (expr.isEmpty()) {
             emptyExpressionError();
         }
@@ -236,7 +226,7 @@ e.printStackTrace();
 
         if (firstArg.isRegister()) {
             if (!firstArg.equals(dest)) {
-                out.appendCommand(src, "mov", dest, firstArg);
+                addCommand(MOV, dest, firstArg);
             }
         } else {
             // x = -3
@@ -244,13 +234,13 @@ e.printStackTrace();
             // x = abc
             // x = var
             if (firstArg.isOperator("-") && expr.size() > 1) {    // x = -y
-                moveNegative(src, dest, expr, out);
+                moveNegative(dest, expr);
             } else {    // x = const | var | expression
                 if (firstArg.isNumber() && firstArg.getNumberValue() == 0) {
-                    out.appendCommand(src, "clr", dest);
+                    addCommand(CLR, dest);
                     return;
                 } else {
-                    moveValueToReg(src, dest, firstArg, out);
+                    moveValueToReg(dest, firstArg);
                 }
             }
         }
@@ -265,32 +255,32 @@ e.printStackTrace();
         for (int i = 0; i < expr.size()/2; i++) {
             Token operation = expr.get(i*2);
             Token arg = expr.get(i*2+1);
-            compileOperation(src, dest, arg, operation.asString(), out);
+            compileOperation(dest, arg, operation.asString());
         }
     }
 
-    private boolean compileAddWithCarry(TokenString src, Token dest, Token firstArg, Token secondArg, OutputFile out) {
+    private boolean compileAddWithCarry(Token dest, Token firstArg, Token secondArg) throws SyntaxException {
         if (firstArg.isRegister() && secondArg.isFlag("F_CARRY")) {
-            out.appendCommand(src, "adc", dest, firstArg);
+            addCommand(ADC, dest, firstArg);
             return true;
         } else if (firstArg.isFlag("F_CARRY") && secondArg.isRegister()) {
-            out.appendCommand(src, "adc", dest, secondArg);
+            addCommand(ADC, dest, secondArg);
             return true;
         }
         return false;
     }
 
-    private void compileOperation(TokenString src, Token dest, Token arg, String operation, OutputFile out) throws CompileException {
+    private void compileOperation(Token dest, Token arg, String operation) throws SyntaxException {
         switch (operation) {
             case "+":
                 if (arg.isAnyConst()) {
                     if (arg.isNumber() && arg.getNumberValue() == 1) {
-                        out.appendCommand(src, "inc", dest);
+                        addCommand(INC, dest);
                     } else {
-                        out.appendCommand(src, "subi", dest, arg.getNegativeExpr());
+                        addCommand(SUBI, dest, arg.getNegativeExpr());
                     }
                 } else if (arg.isRegister()) {
-                    out.appendCommand(src, "add", dest, arg);
+                    addCommand(ADD, dest, arg);
                 } else {
                     wrongArgumentError(arg);
                 }
@@ -298,30 +288,30 @@ e.printStackTrace();
             case "-":
                 if (arg.isAnyConst()) {
                     if (arg.isNumber() && arg.getNumberValue() == 1) {
-                        out.appendCommand(src, "dec", dest);
+                        addCommand(DEC, dest);
                     } else {
-                        out.appendCommand(src, "subi", dest, arg.wrapToBrackets());
+                        addCommand(SUBI, dest, arg.wrapToBrackets());
                     }
                 } else if (arg.isRegister()) {
-                    out.appendCommand(src, "sub", dest, arg);
+                    addCommand(SUB, dest, arg);
                 } else {
                     wrongArgumentError(arg);
                 }
                 break;
             case "&":
                 if (arg.isAnyConst()) {
-                    out.appendCommand(src, "andi", dest, arg.wrapToBrackets());
+                    addCommand(ANDI, dest, arg.wrapToBrackets());
                 } else if (arg.isRegister()) {
-                    out.appendCommand(src, "and", dest, arg);
+                    addCommand(AND, dest, arg);
                 } else {
                     wrongArgumentError(arg);
                 }
                 break;
             case "|":
                 if (arg.isAnyConst()) {
-                    out.appendCommand(src, "ori", dest, arg.wrapToBrackets());
+                    addCommand(ORI, dest, arg.wrapToBrackets());
                 } else if (arg.isRegister()) {
-                    out.appendCommand(src, "or", dest, arg);
+                    addCommand(OR, dest, arg);
                 } else {
                     wrongArgumentError(arg);
                 }
@@ -330,9 +320,9 @@ e.printStackTrace();
             case "<<":
                 if (arg.isNumber()) {
                     int cnt = arg.getNumberValue();
-                    String cmd = "<<".equals(operation) ? "lsl" : "lsr";
+                    Cmd cmd = "<<".equals(operation) ? LSL : LSR;
                     for (int i = 0; i < cnt; i++) {
-                        out.appendCommand(src, cmd, dest);
+                        addCommand(cmd, dest);
                     }
                 } else {
                     wrongArgumentError(arg);
@@ -344,15 +334,15 @@ e.printStackTrace();
     }
 
 
-    private void moveNegative(TokenString src, Token dest, Expression expr, OutputFile out) throws CompileException {
+    private void moveNegative(Token dest, Expression expr) throws SyntaxException {
         Token secondArg = expr.get(1);
         // x = -y
         if (secondArg.isRegister()) {
             if (dest.equals(secondArg)) {
-                out.appendCommand(src, "neg", dest);
+                addCommand(NEG, dest);
             } else {
-                out.appendCommand(src, "mov", dest, secondArg);
-                out.appendCommand(src, "neg", dest);
+                addCommand(MOV, dest, secondArg);
+                addCommand(NEG, dest);
             }
         } else {
             // x = -123
@@ -360,29 +350,29 @@ e.printStackTrace();
                 unexpectedExpressionError(secondArg);
             }
             Token s = secondArg.isConst() ? resolveConst(secondArg) : secondArg;
-            out.appendCommand(src, "ldi", dest, s.getNegativeExpr());
+            addCommand(LDI, dest, s.getNegativeExpr());
         }
         expr.removeFirst();
     }
 
 
-    private void moveValueToReg(TokenString src, Token destReg, Token arg, OutputFile out) throws CompileException {
+    private void moveValueToReg(Token destReg, Token arg) throws SyntaxException {
         if (arg.isVar()) {
             int size = getVarSize(arg);
             if (size == 1) {
-                out.appendCommand(src, "lds", destReg, arg);
+                addCommand(LDS, destReg, arg);
             } else {
                 unsupportedOperationError();
             }
         } else if (arg.isConst()) {
-            out.appendCommand(src, "ldi", destReg, resolveConst(arg));
+            addCommand(LDI, destReg, resolveConst(arg));
         } else if (arg.isAnyConst()) {
-            out.appendCommand(src, "ldi", destReg, arg);
+            addCommand(LDI, destReg, arg);
         } else if (arg.isArray()) {
-            moveFromArray(src, destReg, arg, out);
+            moveFromArray(destReg, arg);
         } else {
             // TODO
-            //out.appendCommand(src, "ldi", destReg, arg);
+            //addCommand(LDI, destReg, arg);
             unexpectedExpressionError(arg);
         }
     }
@@ -396,7 +386,7 @@ e.printStackTrace();
     }
 
 
-    private void moveToVar(TokenString src, Token dest, Expression expr, OutputFile out) throws CompileException {
+    private void moveToVar(Token dest, Expression expr) throws SyntaxException {
         if (expr.size() != 1) {
             unsupportedOperationError();
         }
@@ -409,16 +399,16 @@ e.printStackTrace();
             if (!arg.isRegister()) {
                 unexpectedExpressionError("register expected: " + arg);
             }
-            out.appendCommand(src, "sts", dest, arg);
+            addCommand(STS, dest, arg);
         } else {
             for (int i = 0; i < varSize; i++) {
                 String varAddress = i < varSize-1 ? dest + "+" + (varSize-i-1) : dest.asString();
-                out.appendCommand(src, "sts", varAddress, arg.getReg(i).asString());
+                addCommand(STS, varAddress, arg.getReg(i).asString());
             }
         }
     }
 
-    private void moveToGroupOrPair(TokenString src, Token dest, Expression expr, OutputFile out) throws CompileException {
+    private void moveToGroupOrPair(Token dest, Expression expr) throws SyntaxException {
         Token arg = expr.get(0);
         if (expr.size() > 1) {
             if (expr.size() == 3 && expr.get(1).isOperator("+", "-")) {
@@ -428,14 +418,14 @@ e.printStackTrace();
                 if (var.isVar() && (secondArg.isPair() || secondArg.isRegGroup(2))) {
                     Type varType = getVarType(var);
                     if (varType == Type.POINTER || varType == Type.PRGPTR) {
-                        loadPointerVarToPair(src, var, varType, dest, out);
+                        loadPointerVarToPair(var, varType, dest);
                     } else if (varType == Type.WORD) {
-                        out.appendCommand(src, "lds", dest.getPairLow(), var);
-                        out.appendCommand(src, "lds", dest.getPairHigh(), var.asString()+"+1");
+                        addCommand(LDS, dest.getPairLow(), var);
+                        addCommand(LDS, dest.getPairHigh(), var.asString()+"+1");
                     } else {
                         unsupportedOperationError();
                     }
-                    addSubPairToPair(src, operator.isOperator("+"), dest, secondArg, out);
+                    addSubPairToPair(operator.isOperator("+"), dest, secondArg);
                     return;
                 } else if (!secondArg.isNumber() && !secondArg.isSomeString()) {
                     unsupportedOperationError();
@@ -448,10 +438,10 @@ e.printStackTrace();
                 if (!canBeExpression) {
                     unsupportedOperationError();
                 }
-                Variable.Type varType = null;
+                Type varType = null;
                 for (Token t : expr) {
                     if (t.isVar()) {
-                        Variable.Type vt = getVarType(t);
+                        Type vt = getVarType(t);
                         if (vt != null && varType != null && vt != varType) {
                             unsupportedOperationError();
                         }
@@ -463,10 +453,10 @@ e.printStackTrace();
                 Token merged = new Token(Token.TYPE_CONST_EXPRESSION, expr.toString());
 
                 if (varType != null) {
-                    loadPointerVarToPair(src, merged, varType, dest, out);
+                    loadPointerVarToPair(merged, varType, dest);
                 } else {
-                    out.appendCommand(src, "ldi", dest.getPairLow(), loByte(merged));
-                    out.appendCommand(src, "ldi", dest.getPairHigh(), hiByte(merged));
+                    addCommand(LDI, dest.getPairLow(), loByte(merged));
+                    addCommand(LDI, dest.getPairHigh(), hiByte(merged));
                 }
             } else {
                 unsupportedOperationError();
@@ -474,21 +464,21 @@ e.printStackTrace();
         } else if (arg.isAnyConst()) {
             if (dest.isRegGroup()) {
                 for (int i = dest.size()-1; i >= 0; i--) {
-                    out.appendCommand(src, "ldi", dest.getReg(i), numByte(arg, dest.size()-1-i));
+                    addCommand(LDI, dest.getReg(i), numByte(arg, dest.size()-1-i));
                 }
             } else {
-                out.appendCommand(src, "ldi", dest.getPairLow(), loByte(arg));
-                out.appendCommand(src, "ldi", dest.getPairHigh(), hiByte(arg));
+                addCommand(LDI, dest.getPairLow(), loByte(arg));
+                addCommand(LDI, dest.getPairHigh(), hiByte(arg));
             }
         } else if ((arg.isPair() || arg.isRegisterWord()) && (dest.isPair() || dest.isRegisterWord())) {
-            out.appendCommand(src, "movw", dest.getPairLow(), arg.getPairLow());
+            addCommand(MOVW, dest.getPairLow(), arg.getPairLow());
         } else if (arg.isPair() || arg.isRegGroup(2)) {
             // TODO !!!! optimize with movw !!!!
             if (!dest.getPairLow().equals(arg.getPairLow())) {
-                out.appendCommand(src, "mov", dest.getPairLow(), arg.getPairLow());
+                addCommand(MOV, dest.getPairLow(), arg.getPairLow());
             }
             if (!dest.getPairHigh().equals(arg.getPairHigh())) {
-                out.appendCommand(src, "mov", dest.getPairHigh(), arg.getPairHigh());
+                addCommand(MOV, dest.getPairHigh(), arg.getPairHigh());
             }
         } else if (dest.isRegGroup() && arg.isRegGroup()) {
             if (dest.size() != arg.size()) {
@@ -497,11 +487,11 @@ e.printStackTrace();
             // TODO !!!! optimize with movw !!!!
             for (int i = dest.size()-1; i >= 0; i--) {
                 if (!dest.getReg(i).equals(arg.getReg(i))) {
-                    out.appendCommand(src, "mov", dest.getReg(i), arg.getReg(i));
+                    addCommand(MOV, dest.getReg(i), arg.getReg(i));
                 }
             }
         } else if (getVarType(arg) == Type.POINTER || getVarType(arg) == Type.PRGPTR) {
-            loadPointerVarToPair(src, arg, getVarType(arg), dest, out);
+            loadPointerVarToPair(arg, getVarType(arg), dest);
         } else if ((dest.isRegGroup() || dest.isPair()) && isVar(arg)) {
             if (getVarSize(arg) != dest.size()) {
                 sizesMismatchError();
@@ -509,37 +499,37 @@ e.printStackTrace();
             int sz = dest.size();
             for (int i = 0; i < sz; i++) {
                 String varAddress = i < sz - 1 ? arg + "+" + (sz - i - 1) : arg.asString();
-                out.appendCommand(src, "lds", dest.getReg(i), varAddress);
+                addCommand(LDS, dest.getReg(i), varAddress);
             }
         } else if (arg.isPair() || arg.isRegisterWord()) {
-            out.appendCommand(src, "movw", dest.getPairLow(), arg.getPairLow());
+            addCommand(MOVW, dest.getPairLow(), arg.getPairLow());
         } else if (arg.isRegGroup(2)) {
             // TODO !!!! optimize with movw !!!!
-            out.appendCommand(src, "mov", dest.getPairLow(), arg.getPairLow());
-            out.appendCommand(src, "mov", dest.getPairHigh(), arg.getPairHigh());
+            addCommand(MOV, dest.getPairLow(), arg.getPairLow());
+            addCommand(MOV, dest.getPairHigh(), arg.getPairHigh());
         } else if (arg.isArrayIow()) {
-            out.appendCommand(src, "in", dest.getPairHigh(), arrayIndexToPort(arg, "H"));
-            out.appendCommand(src, "in", dest.getPairLow(), arrayIndexToPort(arg, "L"));
+            addCommand(IN, dest.getPairHigh(), arrayIndexToPort(arg, "H"));
+            addCommand(IN, dest.getPairLow(), arrayIndexToPort(arg, "L"));
         } else {
             unsupportedOperationError(expr);
         }
     }
 
-    private void loadPointerVarToPair(TokenString src, Token var, Type varType, Token dest, OutputFile out) throws CompileException {
+    private void loadPointerVarToPair(Token var, Type varType, Token dest) throws SyntaxException {
         if (varType != Type.PRGPTR && varType != Type.POINTER) {
             unsupportedOperationError();
         }
         String low = loVarPtr(var, varType, false);
         String high = hiVarPtr(var, varType, false);
-        out.appendCommand(src, "ldi", dest.getPairLow(), low);
-        out.appendCommand(src, "ldi", dest.getPairHigh(), high);
+        addCommand(LDI, dest.getPairLow(), low);
+        addCommand(LDI, dest.getPairHigh(), high);
     }
 
-    private void moveFromArray(TokenString src, Token destReg, Token array, OutputFile out) throws CompileException {
+    private void moveFromArray(Token destReg, Token array) throws SyntaxException {
         Token.ArrayIndex index;
         switch (array.getType()) {
             case Token.TYPE_ARRAY_IO:
-                out.appendCommand(src, "in", destReg, arrayIndexToPort(array));
+                addCommand(IN, destReg, arrayIndexToPort(array));
                 break;
             case Token.TYPE_ARRAY_PRG:
                 index = array.getIndex();
@@ -548,12 +538,12 @@ e.printStackTrace();
                 }
                 if (!index.hasModifier()) {
                     if (destReg.isRegister("r0")) {
-                        out.appendCommand(src, "lpm");
+                        addCommand(LPM);
                     } else {
-                        out.appendCommand(src, "lpm", destReg, index.getName());
+                        addCommand(LPM, destReg, index.getName());
                     }
                 } else if (index.isPostInc()) {
-                    out.appendCommand(src, "lpm", destReg, index.getName() + "+");
+                    addCommand(LPM, destReg, index.getName() + "+");
                 } else {
                     wrongArrayIndex("prg");
                 }
@@ -563,21 +553,21 @@ e.printStackTrace();
                 if (!index.isPair() || index.isPreInc() || index.isPostDec()) {
                     unsupportedOperationError();
                 }
-                out.appendCommand(src, "ld", destReg, arrayPairIndexValue(index));
+                addCommand(LD, destReg, arrayPairIndexValue(index));
                 break;
             default:
                 unsupportedOperationError();
         }
     }
 
-    private void moveToArray(TokenString src, Token dest, Expression expr, OutputFile out) throws CompileException {
+    private void moveToArray(Token dest, Expression expr) throws SyntaxException {
         if (expr.size() != 1) {
             unsupportedOperationError();
         }
         Token arg = expr.getFirst();
         if (dest.isArrayIow() && (arg.isPair() || arg.isRegGroup(2))) {
-            out.appendCommand(src, "out", arrayIndexToPort(dest, "H"), arg.getPairHigh().asString());
-            out.appendCommand(src, "out", arrayIndexToPort(dest, "L"), arg.getPairLow().asString());
+            addCommand(OUT, arrayIndexToPort(dest, "H"), arg.getPairHigh());
+            addCommand(OUT, arrayIndexToPort(dest, "L"), arg.getPairLow());
             return;
         }
         if (!arg.isRegister()) {
@@ -585,7 +575,7 @@ e.printStackTrace();
         }
         switch (dest.getType()) {
             case Token.TYPE_ARRAY_IO:
-                out.appendCommand(src, "out", arrayIndexToPort(dest), arg.asString());
+                addCommand(OUT, arrayIndexToPort(dest), arg.asString());
                 break;
             case Token.TYPE_ARRAY_PRG:
                 unsupportedOperationError("can't write to prg[]");
@@ -595,24 +585,24 @@ e.printStackTrace();
                  if (!index.isPair() || index.isPreInc() || index.isPostDec()) {
                      wrongArrayIndex("ram");
                  }
-                out.appendCommand(src, "st", arrayPairIndexValue(index), arg.asString());
+                addCommand(ST, arrayPairIndexValue(index), arg.asString());
                 break;
             default:
                 unsupportedOperationError();
         }
     }
 
-    private void moveToFlag(TokenString src, Token dest, Expression expr, OutputFile out) throws CompileException {
+    private void moveToFlag(Token dest, Expression expr) throws SyntaxException {
         if (expr.size() == 1) {
             Token arg = expr.getFirst();
             if (dest.isFlag("F_BIT_COPY") && arg.isRegisterBit()) {
-                out.appendCommand(src, "bst", arg.asString(), arg.getBitIndex().asString());
+                addCommand(BST, arg.asString(), arg.getBitIndex().asString());
             } else if (arg.isNumber()) {
                 int val = arg.getNumberValue();
                 if (val == 0) {
-                    out.appendCommand(src, CLEAR_FLAG_MAP.get(dest.asString()));
+                    addCommand(CLEAR_FLAG_MAP.get(dest.asString()));
                 } else if (val == 1) {
-                    out.appendCommand(src, SET_FLAG_MAP.get(dest.asString()));
+                    addCommand(SET_FLAG_MAP.get(dest.asString()));
                 } else {
                     unsupportedOperationError("1 or 0 expected for flag");
                 }
@@ -622,31 +612,31 @@ e.printStackTrace();
         } else if (expr.size() == 3 && expr.getFirst().isArrayIo() && expr.get(1).isOperator(".") && expr.get(2).isAnyConst()) {
             Token bitNumber = expr.get(2);
             checkBitNumber(bitNumber);
-            out.appendCommand(src, CLEAR_FLAG_MAP.get(dest.asString()));
-            out.appendCommand(src, "sbic", arrayIndexToPort(expr.getFirst()), bitNumber.asString());
-            out.appendCommand(src, SET_FLAG_MAP.get(dest.asString()));
+            addCommand(CLEAR_FLAG_MAP.get(dest.asString()));
+            addCommand(SBIC, arrayIndexToPort(expr.getFirst()), bitNumber.asString());
+            addCommand(SET_FLAG_MAP.get(dest.asString()));
         } else if (expr.size() == 4 && expr.getFirst().isOperator("!") && expr.get(1).isArrayIo() && expr.get(2).isOperator(".") && expr.get(3).isAnyConst()) {
             Token bitNumber = expr.get(3);
             checkBitNumber(bitNumber);
-            out.appendCommand(src, CLEAR_FLAG_MAP.get(dest.asString()));
-            out.appendCommand(src, "sbis", arrayIndexToPort(expr.get(1)), bitNumber.asString());
-            out.appendCommand(src, SET_FLAG_MAP.get(dest.asString()));
+            addCommand(CLEAR_FLAG_MAP.get(dest.asString()));
+            addCommand(SBIS, arrayIndexToPort(expr.get(1)), bitNumber.asString());
+            addCommand(SET_FLAG_MAP.get(dest.asString()));
         } else {
             unsupportedOperationError();
         }
     }
 
 
-    private void setBitInPort(TokenString src, Token array, Expression expr, OutputFile out) throws CompileException {
+    private void setBitInPort(Token array, Expression expr) throws SyntaxException {
         if (expr.size() == 5 && expr.get(3).isOperator("=") && expr.get(4).isNumber()) {
             // io[PORTC].5 = 1
             Token val = expr.get(4);
             Token bitToken = expr.get(2);
             checkBitNumber(bitToken);
             if (val.getNumberValue() == 1) {
-                out.appendCommand(src, "sbi", arrayIndexToPort(array), bitToken.asString());
+                addCommand(SBI, arrayIndexToPort(array), bitToken.asString());
             } else if (val.getNumberValue() == 0) {
-                out.appendCommand(src, "cbi", arrayIndexToPort(array), bitToken.asString());
+                addCommand(CBI, arrayIndexToPort(array), bitToken.asString());
             } else {
                 unsupportedOperationError("1 or 0 expected");
             }
@@ -657,26 +647,26 @@ e.printStackTrace();
             checkBitNumber(bitToken);
             checkBitNumber(bitReg);
 
-            out.appendCommand(src, "sbrs", bitReg.asString(), bitReg.getBitIndex().asString());
-            out.appendCommand(src, "cbi", arrayIndexToPort(array), bitToken.asString());
-            out.appendCommand(src, "sbrc", bitReg.asString(), bitReg.getBitIndex().asString());
-            out.appendCommand(src, "sbi", arrayIndexToPort(array), bitToken.asString());
+            addCommand(SBRS, bitReg.asString(), bitReg.getBitIndex().asString());
+            addCommand(CBI, arrayIndexToPort(array), bitToken.asString());
+            addCommand(SBRC, bitReg.asString(), bitReg.getBitIndex().asString());
+            addCommand(SBI, arrayIndexToPort(array), bitToken.asString());
         } else if (expr.size() == 6 && expr.get(3).isOperator("=") && expr.get(4).isOperator("!") && expr.get(5).isRegisterBit()) {
             // io[PORTC].5 = !r10[1]
             Token bitReg = expr.get(5);
             Token bitToken = expr.get(2);
             checkBitNumber(bitToken);
             checkBitNumber(bitReg);
-            out.appendCommand(src, "sbrs", bitReg.asString(), bitReg.getBitIndex().asString());
-            out.appendCommand(src, "sbi", arrayIndexToPort(array), bitToken.asString());
-            out.appendCommand(src, "sbrc", bitReg.asString(), bitReg.getBitIndex().asString());
-            out.appendCommand(src, "cbi", arrayIndexToPort(array), bitToken.asString());
+            addCommand(SBRS, bitReg.asString(), bitReg.getBitIndex().asString());
+            addCommand(SBI, arrayIndexToPort(array), bitToken.asString());
+            addCommand(SBRC, bitReg.asString(), bitReg.getBitIndex().asString());
+            addCommand(CBI, arrayIndexToPort(array), bitToken.asString());
         } else {
             unsupportedOperationError();
         }
     }
 
-    private void moveToRegBit(TokenString src, Token dest, Expression expr, OutputFile out) throws CompileException {
+    private void moveToRegBit(Token dest, Expression expr) throws SyntaxException {
         if (expr.size() != 1) {
             unsupportedOperationError();
         }
@@ -687,177 +677,65 @@ e.printStackTrace();
             Token bitIndex = dest.getBitIndex();
             String bitMask = dest.getBitIndex().isNumber() ? binByteStr(1 << bitIndex.getNumberValue()) : "1<<" + bitIndex.asString();
             if (val.getNumberValue() == 1) {
-                out.appendCommand(src, "sbr", dest, bitMask);
+                addCommand(SBR, dest, bitMask);
             } else if (val.getNumberValue() == 0) {
-                out.appendCommand(src, "cbr", dest, bitMask);
+                addCommand(CBR, dest, bitMask);
             } else {
                 unsupportedOperationError("1 or 0 expected");
             }
         } else if (arg.isFlag("F_BIT_COPY")) {
-            out.appendCommand(src, "bld", dest.asString(), dest.getBitIndex().asString());
+            addCommand(BLD, dest.asString(), dest.getBitIndex().asString());
         } else {
             unsupportedOperationError();
         }
     }
 
-    private void checkBitNumber(Token token) throws CompileException {
-        if (token.isNumber()) {
-            int bit = token.getNumberValue();
-            if (bit < 0 || bit > 7) {
-                unsupportedOperationError("wrong bit number");
-            }
-        } else if (token.isRegisterBit()) {
-            Token index = token.getBitIndex();
-            int bit;
-            if (index.isAnyConst() && parser.getConstant(index.asString()) != null) {
-                String val = parser.getConstant(index.asString()).value;
-                if (!ParserUtils.isNumber(val)) {
-                    unsupportedOperationError("unexpected value for bit index: " + index);
-                }
-                bit = ParserUtils.parseValue(val);
-            } else if (index.isNumber()) {
-                bit = index.getNumberValue();
-            } else {
-                unsupportedOperationError("unexpected value for bit index: " + index);
-                return;
-            }
-            if (bit < 0 || bit > 7) {
-                unsupportedOperationError("wrong bit number");
-            }
-        } else if (!(token.isAnyConst() || token.isSomeString())) {
-            unsupportedOperationError("bit number expected after dot");
-        }
-    }
 
-
-    private static String hexByteStr(int val) {
-        String s = Integer.toHexString(val);
-        return s.length() == 1 ? "0x0" + s : "0x" + s;
-    }
-
-    private static String binByteStr(int val) {
-        String s = Integer.toBinaryString(val);
-        s = STRING_OF_ZERO[8 - s.length()] + s;
-        return "0b" + s;
-    }
-
-
-    private String hiByte(Token val) {
-        if (val.isNumber()) {
-            int d = val.getNumberValue();
-            return hexByteStr(d >> 8);
-        }
-        if (parser.gcc) {
-            return "(" +val + " >> 8)";
-        } else {
-            return "HIGH(" + val + ")";
-        }
-    }
-
-    private String loByte(Token val) {
-        if (val.isNumber()) {
-            int d = val.getNumberValue();
-            return hexByteStr(d & 0xff);
-        }
-        if (parser.gcc) {
-            return "(" + val + " & 0xFF)";
-        } else {
-            return "LOW(" + val + ")";
-        }
-    }
-
-    private String numByte(Token val, int byteNum) {
-        if (val.isNumber()) {
-            int d = val.getNumberValue();
-            d = d >> (8*byteNum);
-            return hexByteStr(d & 0xff);
-        }
-        if (parser.gcc) {
-            return "((" + val + ">>" + (byteNum*8) + ") & 0xFF)";
-        } else {
-            String valStr = val.toString();
-            if (!ParserUtils.isInBrackets(valStr)) {
-                valStr = "(" + valStr + ")";
-            }
-            return ("BYTE" + (byteNum+1)) + valStr;
-        }
-    }
-
-    private String loVarPtr(Token name, Variable.Type type, boolean negative) {
-        if (parser.gcc) {
-            return negative ? "lo8(-(" + name + "))" : "lo8(" + name + ")";
-        } else {
-            if (type == Type.POINTER) {
-                return negative ? "LOW(-" + name + ")" : "LOW(" + name + ")";
-            } else if (type == Type.PRGPTR) {
-                return negative ? "LOW(-2*" + name + ")" : "LOW(2*" + name + ")";
-            } else {
-                throw new RuntimeException("unexpected pointer type");
-            }
-        }
-    }
-
-    private String hiVarPtr(Token name, Variable.Type type, boolean negative) {
-        if (parser.gcc) {
-            return negative ? "hi8(-(" + name + "))" : "hi8(" + name + ")";
-        } else {
-            if (type == Type.POINTER) {
-                return negative ? "HIGH(-" + name + ")" : "HIGH(" + name + ")";
-            } else if (type == Type.PRGPTR) {
-                return negative ? "HIGH(-2*" + name + ")" : "HIGH(2*" + name + ")";
-            } else {
-                throw new RuntimeException("unexpected pointer type");
-            }
-        }
-    }
-
-
-
-    private void incDecReg(TokenString src, Token dest, Token operation, OutputFile out) throws CompileException {
+    private void incDecReg(Token dest, Token operation) throws SyntaxException {
         if (dest.isPair() || dest.isRegisterWord()) {
-            String instruction = operation.isOperator("++") ? "adiw" : "sbiw";
-            out.appendCommand(src, instruction, dest.getPairLow(), "1");
+            Cmd cmd = operation.isOperator("++") ? ADIW : SBIW;
+            addCommand(cmd, dest.getPairLow(), "1");
         } else if (dest.isRegister()) {
-            String instruction = operation.isOperator("++") ? "inc" : "dec";
-            out.appendCommand(src, instruction, dest);
+            Cmd cmd = operation.isOperator("++") ? INC : DEC;
+            addCommand(cmd, dest);
         } else {
             unsupportedOperationError();
         }
     }
 
-    private void addRegGroup(TokenString src, Token dest, Token operation, Token arg, OutputFile out) throws CompileException {
+    private void addRegGroup(Token dest, Token operation, Token arg) throws SyntaxException {
         if (operation.isOperator("+=")) {
             for (int i = dest.size()-1; i >= 0; i --) {
-                String instruction = i == dest.size()-1 ? "add" : "adc";
-                out.appendCommand(src, instruction, dest.getReg(i), arg.getReg(i));
+                Cmd cmd = i == dest.size()-1 ? ADD : ADC;
+                addCommand(cmd, dest.getReg(i), arg.getReg(i));
             }
         } else if (operation.isOperator("-=")) {
             for (int i = dest.size()-1; i >= 0; i --) {
-                String instruction = i == dest.size()-1 ? "sub" : "sbc";
-                out.appendCommand(src, instruction, dest.getReg(i), arg.getReg(i));
+                Cmd cmd = i == dest.size()-1 ? SUB : SBC;
+                addCommand(cmd, dest.getReg(i), arg.getReg(i));
             }
         } else {
             unsupportedOperationError(operation);
         }
     }
 
-    private void addReg(TokenString src, Token dest, Token operation, Token argument, OutputFile out) throws CompileException {
+    private void addReg(Token dest, Token operation, Token argument) throws SyntaxException {
         boolean isAdd = operation.isOperator("+=");
         if (dest.isRegister() && argument.isRegister()) {
-            String instruction = isAdd ? "add" : "sub";
-            out.appendCommand(src, instruction, dest, argument);
+            Cmd cmd = isAdd ? ADD : SUB;
+            addCommand(cmd, dest, argument);
         } else if (dest.isPair()) {
             boolean shortArg = argument.isNumber() && Math.abs(argument.getNumberValue()) <= 63;
             if (shortArg && argument.isAnyConst()) {
-                String instruction = isAdd ? "adiw" : "sbiw";
-                out.appendCommand(src, instruction, dest.getPairLow(), argument.wrapToBrackets());
+                Cmd cmd = isAdd ? ADIW : SBIW;
+                addCommand(cmd, dest.getPairLow(), argument.wrapToBrackets());
             } else if (getVarType(argument) == Type.POINTER || getVarType(argument) == Type.PRGPTR) {
                 String argLo = loVarPtr(argument, getVarType(argument), isAdd);
                 String argHi = hiVarPtr(argument, getVarType(argument), isAdd);
-                out.appendCommand(src, "subi", dest.getPairLow(), argLo);
-                out.appendCommand(src, "sbci", dest.getPairHigh(), argHi);
+                addCommand(SUBI, dest.getPairLow(), argLo);
+                addCommand(SBCI, dest.getPairHigh(), argHi);
             } else if (argument.isPair() || argument.isRegGroup(2)) {
-                addSubPairToPair(src, isAdd, dest, argument, out);
+                addSubPairToPair(isAdd, dest, argument);
 //                if (isAdd) {
 //                    out.appendCommand(src, "add", dest.getPairLow(), argument.getPairLow());
 //                    out.appendCommand(src, "adc", dest.getPairHigh(), argument.getPairHigh());
@@ -870,22 +748,19 @@ e.printStackTrace();
             }
         } else if (argument.isAnyConst()) {
             if (dest.isRegister()) {
-                if (isAdd) {
-                    out.appendCommand(src, "subi", dest, argument.getNegativeExpr());
-                } else {
-                    out.appendCommand(src, "subi", dest, argument.wrapToBrackets());
-                }
+                Token arg = isAdd ? argument.getNegativeExpr() : argument.wrapToBrackets();
+                addCommand(SUBI, dest, arg);
             } else if (dest.isRegGroup()) {
                 // TODO optimize it for pairs with ADIW/SBIW
                 String op = isAdd ? "-" : "";
-                out.appendCommand(src, "subi", dest.getReg(dest.size()-1), op+numByte(argument, 0));
+                addCommand(SUBI, dest.getReg(dest.size()-1), op+numByte(argument, 0));
 
                 for (int i = dest.size()-2; i >= 0; i--) {
                     int byteOffset = dest.size() - i - 1;
-                    out.appendCommand(src, "sbci", dest.getReg(i), op+numByte(argument, byteOffset));
+                    addCommand(SBCI, dest.getReg(i), op+numByte(argument, byteOffset));
                 }
             } else if (dest.isPair()) {
-                addPair(src, dest, operation, argument, out);
+                addPair(dest, operation, argument);
             } else {
                 unexpectedExpressionError(argument);
             }
@@ -894,7 +769,7 @@ e.printStackTrace();
         }
     }
 
-    private void addPair(TokenString src, Token dest, Token operation, Token arg, OutputFile out) throws CompileException {
+    private void addPair(Token dest, Token operation, Token arg) throws SyntaxException {
         boolean add;
         if (operation.isOperator("+=")) {
             add = true;
@@ -908,161 +783,77 @@ e.printStackTrace();
             // TODO calculate numbers
             boolean shortArg = !arg.isNumber() || Math.abs(arg.getNumberValue()) <= 63;
             if (shortArg) {
-                out.appendCommand(src, add ? "adiw" : "sbiw", dest.getPairLow(), arg.wrapToBrackets());
+                addCommand(add ? ADIW : SBIW, dest.getPairLow(), arg.wrapToBrackets());
             } else {
-                out.appendCommand(src, "subi", dest.getPairLow(), "-"+loByte(arg));
-                out.appendCommand(src, "sbci", dest.getPairHigh(), "-"+hiByte(arg));
+                addCommand(SUBI, dest.getPairLow(), "-"+loByte(arg));
+                addCommand(SBCI, dest.getPairHigh(), "-"+hiByte(arg));
             }
         } else if (arg.isPair() || arg.isRegGroup(2)) {
-            addSubPairToPair(src, add, dest, arg, out);
-//            out.appendCommand(src, add ? "add" : "sub", dest.getPairLow(), arg.getPairLow());
-//            out.appendCommand(src, add ? "adc" : "sbc", dest.getPairHigh(), arg.getPairHigh());
+            addSubPairToPair(add, dest, arg);
         } else if (arg.isVar()) {
-            Variable.Type varType = getVarType(arg);
+            Type varType = getVarType(arg);
             if (varType != Type.POINTER && varType != Type.PRGPTR) {
                 unsupportedOperationError();
             }
             String argLo = loVarPtr(arg, varType, add);
             String argHi = hiVarPtr(arg, varType, add);
-            out.appendCommand(src, "subi", dest.getPairLow(), argLo);
-            out.appendCommand(src, "sbci", dest.getPairHigh(), argHi);
+            addCommand(SUBI, dest.getPairLow(), argLo);
+            addCommand(SBCI, dest.getPairHigh(), argHi);
         } else {
             unsupportedOperationError();
         }
     }
 
-    private void addSubPairToPair(TokenString src, boolean add, Token dest, Token arg, OutputFile out) {
-        out.appendCommand(src, add ? "add" : "sub", dest.getPairLow(), arg.getPairLow());
-        out.appendCommand(src, add ? "adc" : "sbc", dest.getPairHigh(), arg.getPairHigh());
+    private void addSubPairToPair(boolean add, Token dest, Token arg) throws SyntaxException {
+        addCommand(add ? ADD : SUB, dest.getPairLow(), arg.getPairLow());
+        addCommand(add ? ADC : SBC, dest.getPairHigh(), arg.getPairHigh());
     }
 
 
-    private void andReg(TokenString src, Token dest, Token arg, OutputFile out) throws CompileException {
+    private void andReg(Token dest, Token arg) throws SyntaxException {
         if (arg.isRegister()) {
-            out.appendCommand(src, "and", dest, arg);
+            addCommand(AND, dest, arg);
         } else if (arg.isAnyConst()) {
-            out.appendCommand(src, "andi", dest, arg);
+            addCommand(ANDI, dest, arg);
         } else {
             unsupportedOperationError();
         }
     }
 
-    private void orReg(TokenString src, Token dest, Token arg, OutputFile out) throws CompileException {
+    private void orReg(Token dest, Token arg) throws SyntaxException {
         if (arg.isRegister()) {
-            out.appendCommand(src, "or", dest, arg);
+            addCommand(OR, dest, arg);
         } else if (arg.isAnyConst()) {
-            out.appendCommand(src, "ori", dest, arg);
+            addCommand(ORI, dest, arg);
         } else {
             unsupportedOperationError();
         }
     }
 
-    private void shlRegs(TokenString src, Token dest, Token arg, OutputFile out) throws CompileException {
+    private void shlRegs(Token dest, Token arg) throws SyntaxException {
         if (!arg.isNumber()) {
             unsupportedOperationError();
         }
         int cnt = arg.getNumberValue();
         for (int i = 0; i < cnt; i++) {
             for (int ri = dest.size() - 1; ri >= 0; ri--) {
-                String instruction = ri == dest.size() - 1 ? "lsl" : "rol";
-                out.appendCommand(src, instruction, dest.getReg(ri));
+                Cmd cmd = ri == dest.size() - 1 ? LSL : ROL;
+                addCommand(cmd, dest.getReg(ri));
             }
         }
     }
 
-    private void shrRegs(TokenString src, Token dest, Token arg, OutputFile out) throws CompileException {
+    private void shrRegs(Token dest, Token arg) throws SyntaxException {
         if (!arg.isNumber()) {
             unsupportedOperationError();
         }
         int cnt = arg.getNumberValue();
         for (int i = 0; i < cnt; i++) {
             for (int ri = dest.size() - 1; ri >= 0; ri--) {
-                String instruction = ri == dest.size() - 1 ? "lsr" : "ror";
-                out.appendCommand(src, instruction, dest.getReg(ri));
+                Cmd cmd = ri == dest.size() - 1 ? LSR : ROR;
+                addCommand(cmd, dest.getReg(ri));
             }
         }
-    }
-
-    private Variable getVar(Token name) {
-        return parser != null ? parser.getVariable(name.asString()) : null;
-    }
-
-    private boolean isVar(Token name) {
-        return getVar(name) != null;
-    }
-
-    private int getVarSize(Token name) {
-        Variable var = getVar(name);
-        return var != null ? var.getSize() : -1;
-    }
-
-    private Variable.Type getVarType(Token name) {
-        Variable var = getVar(name);
-        return var != null ? var.type : null;
-    }
-
-    private static String arrayPairIndexValue(Token.ArrayIndex index) {
-        String name = index.getName();
-        if (index.isPreDec()) {
-            return "-" + name;
-        } else if (index.isPreInc()) {
-            return "+" + name;
-        } else if (index.isPostDec()) {
-            return name + "-";
-        } else if (index.isPostInc()) {
-            return name + "+";
-        } else {
-            return name;
-        }
-    }
-
-    private String arrayIndexToPort(Token tokenIndex, String suffix) throws CompileException {
-        Token.ArrayIndex index = tokenIndex.getIndex();
-        if (index.hasModifier() || index.isPair()) {
-            wrongArrayIndex("io");
-        }
-        String name = index.getName() + suffix;
-        return parser.gcc ? "_SFR_IO_ADDR(" +  name  + ")" : name;
-    }
-
-    private String arrayIndexToPort(Token tokenIndex) throws CompileException {
-        return arrayIndexToPort(tokenIndex, "");
-    }
-
-    private static void unsupportedOperationError() throws CompileException {
-        throw new CompileException("unsupported operation");
-    }
-
-    private static void unsupportedOperationError(Object o) throws CompileException {
-        throw new CompileException("unsupported operation: " + o);
-    }
-
-    private static void constExpectedError(String val) throws CompileException {
-        throw new CompileException("constant expected: " + val);
-    }
-
-    private static void unexpectedExpressionError() throws CompileException {
-        throw new CompileException("unexpected expression");
-    }
-
-    private static void unexpectedExpressionError(Object o) throws CompileException {
-        throw new CompileException("unexpected expression: " + o);
-    }
-
-    private static void wrongArgumentError(Token t) throws CompileException {
-        throw new CompileException("wrong argument: " + t);
-    }
-
-    private static void emptyExpressionError() throws CompileException {
-        throw new CompileException("empty expression");
-    }
-
-    private static void sizesMismatchError() throws CompileException {
-        unsupportedOperationError("sizes mismatch");
-    }
-
-    private static void wrongArrayIndex(String arrayName) throws CompileException {
-        unsupportedOperationError("wrong " + arrayName + "[] index");
     }
 
 
