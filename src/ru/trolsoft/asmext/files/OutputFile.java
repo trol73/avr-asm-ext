@@ -152,22 +152,6 @@ public class OutputFile {
         return sb;
     }
 
-    public StringBuilder appendCommand(TokenString src, String cmd, Token arg1, Token arg2) {
-        return appendCommand(src, cmd, arg1.asString(), arg2.asString());
-    }
-
-    public StringBuilder appendCommand(TokenString src, String cmd, Token arg1, String arg2) {
-        return appendCommand(src, cmd, arg1.asString(), arg2);
-    }
-
-    public StringBuilder appendCommand(TokenString src, String cmd, Token arg) {
-        return appendCommand(src, cmd, arg != null ? arg.asString() : null);
-    }
-
-    public StringBuilder appendCommand(TokenString src, String cmd) {
-        return appendCommand(src, cmd, (String) null);
-    }
-
     public void addComment(String s) {
         startNewLine().append("; ").append(s);
         addLastLine();

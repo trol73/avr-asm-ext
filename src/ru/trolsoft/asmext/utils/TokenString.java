@@ -166,7 +166,7 @@ public class TokenString implements Comparable<TokenString>, CharSequence, Itera
         return s;
     }
 
-    static List<String> splitToTokensList(String line) {
+    private static List<String> splitToTokensList(String line) {
         List<String> result = new ArrayList<>();
         if (line == null) {
             return result;
@@ -214,6 +214,9 @@ public class TokenString implements Comparable<TokenString>, CharSequence, Itera
                 result.set(result.size()-1, prev + next);
                 continue;
             } else if (("+".equals(next) && "+".equals(prev)) || ("-".equals(next) && "-".equals(prev))) {
+                result.set(result.size()-1, prev + next);
+                continue;
+            } else if (("&".equals(next) && "&".equals(prev)) || ("|".equals(next) && "|".equals(prev))) {
                 result.set(result.size()-1, prev + next);
                 continue;
             }

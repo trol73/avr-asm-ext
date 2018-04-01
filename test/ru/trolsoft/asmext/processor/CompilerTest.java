@@ -1,6 +1,7 @@
 package ru.trolsoft.asmext.processor;
 
 import org.junit.jupiter.api.Test;
+import ru.trolsoft.asmext.compiler.MainCompiler;
 import ru.trolsoft.asmext.data.Alias;
 import ru.trolsoft.asmext.data.Procedure;
 import ru.trolsoft.asmext.files.OutputFile;
@@ -9,15 +10,15 @@ import ru.trolsoft.asmext.utils.TokenString;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CompilerTest {
-    Parser parser = new Parser();
-    ru.trolsoft.asmext.compiler.Compiler compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
+    private Parser parser = new Parser();
+    private MainCompiler compiler = new MainCompiler(parser);
 
 
     private static String strip(String s) {
         return s.replace('\t', ' ').replace("  ", " ").trim();
     }
 
-    void testLine(String src, String res) throws SyntaxException {
+    private void testLine(String src, String res) throws SyntaxException {
         OutputFile out = new OutputFile();
         compiler.compile(new TokenString(src), out);
         StringBuilder sb = new StringBuilder();
@@ -36,10 +37,10 @@ class CompilerTest {
         assertEquals(res, outStr);
     }
 
-    boolean hasCompileError(String src) {
+    private boolean hasCompileError(String src) {
         OutputFile out = new OutputFile();
         try {
-            new ru.trolsoft.asmext.compiler.Compiler(new Parser()).compile(new TokenString(src), out);
+            new MainCompiler(new Parser()).compile(new TokenString(src), out);
             return false;
         } catch (SyntaxException e) {
             return true;
@@ -54,7 +55,8 @@ class CompilerTest {
         testLine("if (r21 == 10) goto lbl", "cpi\tr21, 10\nbreq\tlbl");
         testLine("if (r21 != 10) goto lbl", "cpi\tr21, 10\nbrne\tlbl");
         testLine("if (r21 != 10) goto lbl", "cpi\tr21, 10\nbrne\tlbl");
-        testLine("if (r21 != r22) goto lbl", "cp\tr21, r22\nbrne\tlbl");
+        //testLine("if (r21 != r22) goto lbl", "cp\tr21, r22\nbrne\tlbl");
+        testLine("if (r21 != r22) goto lbl", "cpse\tr21, r22\nrjmp\tlbl");
         testLine("if (r2 == r22) goto lbl", "cp\tr2, r22\nbreq\tlbl");
 
         testLine("if (r1 < r2) goto lbl", "cp\tr1, r2\nbrlo\tlbl");
@@ -98,7 +100,7 @@ class CompilerTest {
     @Test
     void testProcCalls() throws SyntaxException {
         parser = new Parser();
-        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
+        compiler = new MainCompiler(parser);
 
         Procedure proc = new Procedure("my_proc");
         proc.addArg(new Alias("x", new Token(Token.TYPE_REGISTER, "r24")));
@@ -140,7 +142,7 @@ class CompilerTest {
     @Test
     void testIfGotoFlags() throws SyntaxException {
         parser = new Parser();
-        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
+        compiler = new MainCompiler(parser);
 
         testLine("if (F_CARRY) goto CalcPwO", "brcs\tCalcPwO");
         testLine("if (!F_CARRY) goto CalcPwO", "brcc\tCalcPwO");
@@ -149,7 +151,7 @@ class CompilerTest {
     @Test
     void testIfRegisterBitSet() throws SyntaxException {
         parser = new Parser();
-        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
+        compiler = new MainCompiler(parser);
 
         testLine("if (r16[2]) goto loc_43", "sbrc\tr16, 2\nrjmp\tloc_43");
         testLine("if (r1[OFFSET]) goto loc_43", "sbrc\tr1, OFFSET\nrjmp\tloc_43");
@@ -164,7 +166,7 @@ class CompilerTest {
     @Test
     void testIfRegisterBitClear() throws SyntaxException {
         parser = new Parser();
-        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
+        compiler = new MainCompiler(parser);
 
         testLine("if (!r16[2]) goto loc_44", "sbrs\tr16, 2\nrjmp\tloc_44");
         testLine("if (!r16[OFFSET]) goto loc_44", "sbrs\tr16, OFFSET\nrjmp\tloc_44");
@@ -179,7 +181,7 @@ class CompilerTest {
     @Test
     void testIfRegisterBitClearContinueLoop() throws SyntaxException {
         parser = new Parser();
-        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
+        compiler = new MainCompiler(parser);
 
         parser.parseLine("loop (r20 = 1) {");
         testLine("if (!r16[2]) continue", "sbrs\tr16, 2\nrjmp\t" + parser.getLastBlock().getLabelStart());
@@ -188,7 +190,7 @@ class CompilerTest {
     @Test
     void testIfRegisterBitClearBreakLoop() throws SyntaxException {
         parser = new Parser();
-        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
+        compiler = new MainCompiler(parser);
 
         parser.parseLine("loop (r20 = 1) {");
         testLine("if (!r16[2]) break", "sbrs\tr16, 2\nrjmp\t" + parser.getLastBlock().buildEndLabel());
@@ -197,7 +199,7 @@ class CompilerTest {
     @Test
     void testIfRegisterBitSetExpression() throws SyntaxException {
         parser = new Parser();
-        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
+        compiler = new MainCompiler(parser);
 
         testLine("if (r16[2]) Z++", "sbrc\tr16, 2\nadiw\tZL, 1");
         testLine("if (r16[2]) r16 |= 0x10", "sbrc\tr16, 2\nori\tr16, 0x10");
@@ -228,7 +230,7 @@ class CompilerTest {
     void testRegisterBitConst() throws SyntaxException {
         parser = new Parser();
         parser.parseLine(".EQU bEdge = 4");
-        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
+        compiler = new MainCompiler(parser);
         testLine("r10[bEdge] = 1", "sbr\tr10, 1<<bEdge");
     }
 
@@ -241,7 +243,7 @@ class CompilerTest {
     void testEqu() throws SyntaxException {
         parser = new Parser(false);
         parser.parseLine(".EQU PORT_VAL = 1<<4");
-        compiler = new ru.trolsoft.asmext.compiler.Compiler(parser);
+        compiler = new MainCompiler(parser);
         testLine("r16 = PORT_VAL", "ldi\tr16, PORT_VAL");
     }
 
@@ -271,13 +273,58 @@ class CompilerTest {
         testLine("if (r21 != r22) r23 = 14", "cpse\tr21, r22\nldi\tr23, 14");
     }
 
+    @Test
+    void testIfNotSingleCommandError() {
+        assertTrue(hasCompileError("if (r1 != r2) r12.r13 = r14.r20"));
+    }
 
+    @Test
+    void testBadLoopError() {
+        //assertTrue(hasCompileError("loop i"));
+        assertTrue(hasCompileError("loop ( {"));
+    }
 
+    @Test
+    void testIfTwoOrGoto() throws SyntaxException {
+        testLine("if (r21 == 0 || r21 == 10) goto lbl", "tst\tr21\nbreq\tlbl\ncpi\tr21, 10\nbreq\tlbl");
+        testLine("if (ZL == 1 || ZL == 7) goto @clockwise", "cpi\tZL, 1\nbreq\t@clockwise\ncpi\tZL, 7\nbreq\t@clockwise");
+    }
+
+    @Test
+    void testNestedIf() throws SyntaxException {
+        parser = new Parser();
+        parser.parseLine("if (r11 == r12) {");
+        parser.parseLine("  if (!r22[0]) {");
+        parser.parseLine("     r30 = 1");
+        parser.parseLine("     rjmp lbl");
+        parser.parseLine("   }");
+        parser.parseLine("}");
+        OutputFile out = parser.getOutput();
+        assertEquals(9, out.size());
+        assertEquals("cp\tr11, r12", out.get(1));
+        assertEquals("brne\t__if_1", out.get(2));
+        assertEquals("sbrc\tr22, 0", out.get(3).trim());
+        assertEquals("rjmp\t__if_2", out.get(4).trim());
+        assertEquals("ldi\tr30, 1", out.get(5).trim());
+        assertEquals("rjmp\tlbl", out.get(6).trim());
+        assertEquals("__if_2:", out.get(7));
+        assertEquals("__if_1:", out.get(8));
+    }
+
+    @Test
+    void testDoubleIfWithBlock() throws SyntaxException {
+        parser = new Parser();
+        parser.parseLine("if (r11 == r12 || !r22[0]) {");
+        parser.parseLine("   r30 = 1");
+        parser.parseLine("   rjmp lbl");
+        parser.parseLine("}");
+        System.out.println(parser.getOutput());
+    }
 
 //    @Test
 //    void testLoopIfBreak() throws SyntaxException {
 //        parser = new Parser();
-//        compiler = new Compiler(parser);
+//        compiler = new MainCompiler(parser);
 //
 //        parser.parseLine(".loop");
 //

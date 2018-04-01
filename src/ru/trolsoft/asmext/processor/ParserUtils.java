@@ -188,7 +188,7 @@ public class ParserUtils {
     }
 
     static boolean isSimpleMatchOperator(String s) {
-        if (s == null ) {
+        if (s == null) {
             return false;
         }
         s = s.trim();

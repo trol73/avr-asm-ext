@@ -3,7 +3,7 @@ package ru.trolsoft.asmext.compiler;
 import ru.trolsoft.asmext.data.Variable;
 import ru.trolsoft.asmext.files.OutputFile;
 import ru.trolsoft.asmext.processor.*;
-import ru.trolsoft.asmext.utils.AsmUtils;
+import ru.trolsoft.asmext.utils.AsmInstruction;
 import ru.trolsoft.asmext.utils.TokenString;
 
 abstract class BaseCompiler extends Errors {
@@ -28,6 +28,11 @@ abstract class BaseCompiler extends Errors {
     void setup(TokenString src, OutputFile out) {
         this.src = src;
         this.out = out;
+    }
+
+    void setup(TokenString src) {
+        this.src = src;
+        this.out = parser.getOutput();
     }
 
     void addCommand(Cmd cmd, String arg1, String arg2) throws SyntaxException {
@@ -75,7 +80,11 @@ abstract class BaseCompiler extends Errors {
         }
     }
 
-    void addCommand(AsmUtils.Instruction instruction) throws SyntaxException {
+    void addLabel(String name) {
+        out.add(name + ":");
+    }
+
+    void addCommand(AsmInstruction instruction) throws SyntaxException {
         addCommand(instruction.getCommand(), instruction.getArg1Str(), instruction.getArg2Str());
     }
 
@@ -258,6 +267,12 @@ abstract class BaseCompiler extends Errors {
                 valStr = "(" + valStr + ")";
             }
             return ("BYTE" + (byteNum+1)) + valStr;
+        }
+    }
+
+    void checkExpressionSize(Expression expr, int size) throws SyntaxException {
+        if (expr.size() != size) {
+            unsupportedOperationError();
         }
     }
 

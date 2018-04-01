@@ -238,7 +238,7 @@ public class ExpressionsCompiler extends BaseCompiler {
             } else {    // x = const | var | expression
                 if (firstArg.isNumber() && firstArg.getNumberValue() == 0) {
                     addCommand(CLR, dest);
-                    return;
+//                    return;
                 } else {
                     moveValueToReg(dest, firstArg);
                 }
@@ -259,16 +259,16 @@ public class ExpressionsCompiler extends BaseCompiler {
         }
     }
 
-    private boolean compileAddWithCarry(Token dest, Token firstArg, Token secondArg) throws SyntaxException {
-        if (firstArg.isRegister() && secondArg.isFlag("F_CARRY")) {
-            addCommand(ADC, dest, firstArg);
-            return true;
-        } else if (firstArg.isFlag("F_CARRY") && secondArg.isRegister()) {
-            addCommand(ADC, dest, secondArg);
-            return true;
-        }
-        return false;
-    }
+//    private boolean compileAddWithCarry(Token dest, Token firstArg, Token secondArg) throws SyntaxException {
+//        if (firstArg.isRegister() && secondArg.isFlag("F_CARRY")) {
+//            addCommand(ADC, dest, firstArg);
+//            return true;
+//        } else if (firstArg.isFlag("F_CARRY") && secondArg.isRegister()) {
+//            addCommand(ADC, dest, secondArg);
+//            return true;
+//        }
+//        return false;
+//    }
 
     private void compileOperation(Token dest, Token arg, String operation) throws SyntaxException {
         switch (operation) {

@@ -1,7 +1,8 @@
 package ru.trolsoft.asmext.processor;
 
 
-import ru.trolsoft.asmext.compiler.ExpressionsCompiler;
+import ru.trolsoft.asmext.compiler.LoopsCompiler;
+import ru.trolsoft.asmext.compiler.MainCompiler;
 import ru.trolsoft.asmext.data.*;
 import ru.trolsoft.asmext.files.OutputFile;
 import ru.trolsoft.asmext.files.SourceFile;
@@ -9,7 +10,10 @@ import ru.trolsoft.asmext.utils.TokenString;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Stack;
 
 import static ru.trolsoft.asmext.data.Block.*;
 
@@ -17,7 +21,8 @@ public class Parser {
     Procedure currentProcedure;
     private int lineNumber;
     private OutputFile output = new OutputFile();
-    private final ru.trolsoft.asmext.compiler.Compiler compiler = new ru.trolsoft.asmext.compiler.Compiler(this);
+    private final MainCompiler compiler = new MainCompiler(this);
+    private final LoopsCompiler loopsCompiler = new LoopsCompiler(this);
     public Map<String, Procedure> procedures = new HashMap<>();
     Map<String, Variable> variables = new HashMap<>();
     Map<String, Constant> constants = new HashMap<>();
@@ -290,52 +295,30 @@ public class Parser {
     private void processStartLoop(TokenString str) throws SyntaxException {
         resolveAliases(str);
         Expression expr = buildExpression(str);
+        loopsCompiler.compileLoopStart(str, expr);
+    }
 
-        if (!expr.getLast().isOperator("{")) {
-            error("'{' expected");
-        }
-        Expression argExpr = null;
-        if (expr.get(1).isOperator("(")) {
-            if (!expr.getLast(1).isOperator(")")) {
-                error("')' not found");
-            }
-            argExpr = expr.subExpression(2, expr.size() - 3);
-            if (argExpr.isEmpty()) {
-                argExpr = null;
-            }
-        } else if (expr.size() != 2) {
-            error("wrong loop syntax");
-        }
-        String name = argExpr != null ? argExpr.getFirst().asString() + "_" : "";
-        String label = (currentProcedure != null ? currentProcedure.name : "") + "__loop_" + name + lineNumber;
-        Block block = new Block(BLOCK_LOOP, argExpr, lineNumber, label);
+    private String generateLabelName(String baseName) {
+        return (currentProcedure != null ? currentProcedure.name : "") + "__" + baseName + lineNumber;
+    }
+
+    public Block addNewBlock(int type, Expression expr, String labelBaseName) {
+        String label = generateLabelName(labelBaseName);
+        Block block = new Block(type, expr, lineNumber, label);
         blocks.push(block);
-
-        if (argExpr != null) {
-            Token reg = argExpr.getFirst();
-            if (!reg.isRegister()) {
-                error("register expected: " + reg);
-            }
-            if (argExpr.size() > 1) {
-                if (!argExpr.get(1).isOperator("=")) {
-                    error("wrong loop argument expression");
-                }
-                new ExpressionsCompiler(this).compile(str, argExpr.copy(), output);
-            }
-        }
-        output.add(block.getLabelStart() + ":");
+        return block;
     }
 
     private void processStartIf(TokenString src) throws SyntaxException {
         resolveAliases(src);
-        String label = (currentProcedure != null ? currentProcedure.name : "") + "__if_" + lineNumber;
+        String label = generateLabelName("if_");
         Expression expr = buildExpression(src);
         if (!expr.getLast().isOperator("{")) {
             error("wrong if block syntax");
         }
         expr.set(expr.size() - 1, new Token(Token.TYPE_KEYWORD, "goto"));
         expr.add(new Token(Token.TYPE_OTHER, label));
-        compiler.compileIf(src, expr, true, output);
+        compiler.compileIf(src, expr, true);
         Block block = new Block(BLOCK_IF, expr, lineNumber, label);
         blocks.push(block);
     }
@@ -351,7 +334,7 @@ public class Parser {
             error("if block not found");
         }
         blocks.pop();
-        String label = (currentProcedure != null ? currentProcedure.name : "") + "__if_else_" + lineNumber;
+        String label = generateLabelName("if_else_");
         Block block = new Block(BLOCK_ELSE, null, lineNumber, label);
         blocks.push(block);
         output.appendCommand(src, "rjmp", block.getLabelStart());
@@ -390,11 +373,11 @@ public class Parser {
         Block lastBlock = blocks.pop();
         switch (lastBlock.type) {
             case BLOCK_LOOP:
-                processEndLoop(line, lastBlock);
+                loopsCompiler.compileLoopEnd(line, lastBlock);
                 break;
             case BLOCK_IF:
             case BLOCK_ELSE:
-                processEndIf(line, lastBlock);
+                processEndIf(lastBlock);
                 break;
             case BLOCK_BYTES:
                 processEndBytes(lastBlock);
@@ -402,20 +385,8 @@ public class Parser {
         }
     }
 
-    private void processEndLoop(TokenString line, Block block) {
-        if (block.expr != null) {
-            Token reg = block.expr.getFirst();
-            output.appendCommand(line, "dec", reg).append("\t\t; ").append(reg);
-            output.appendCommand(line, "brne", block.getLabelStart());
-        } else {
-            output.appendCommand(line, "rjmp", block.getLabelStart());
-        }
-        if (block.getLabelEnd() != null) {
-            output.add(block.getLabelEnd() + ":");
-        }
-    }
 
-    private void processEndIf(TokenString line, Block block) {
+    private void processEndIf(Block block) {
         output.add(block.getLabelStart() + ":");
     }
 
@@ -443,7 +414,7 @@ public class Parser {
             error("extra characters in line");
         }
         Block block = getCurrentCycleBlock();
-        output.appendCommand(line, "rjmp", block.getLabelStart());
+        loopsCompiler.compileContinue(line, block);
     }
 
     private void processBreak(TokenString line) throws SyntaxException {
@@ -452,7 +423,7 @@ public class Parser {
             error("extra characters in line");
         }
         Block block = getCurrentCycleBlock();
-        output.appendCommand(line, "rjmp", block.buildEndLabel());
+        loopsCompiler.compileBreak(line, block);
     }
 
     private void processExtern(TokenString line) throws SyntaxException {
@@ -568,11 +539,12 @@ public class Parser {
 
     private void processSet(String line, String args, boolean addToOutput) throws SyntaxException {
         String split[] = args.split("=");
-        if (split.length > 2) {
+        if (split.length != 2) {
             error("wrong expression");
         }
         String name = split[0].trim();
-        Constant c = new Constant(name, null, Constant.Type.EQU);
+        String value = split[1].trim();
+        Constant c = new Constant(name, value, Constant.Type.EQU);
         if (currentProcedure != null) {
             currentProcedure.consts.put(name, c);
         } else {
@@ -793,7 +765,7 @@ public class Parser {
         }
     }
 
-    String makeConstExpression(Constant constant) {
+    private String makeConstExpression(Constant constant) {
         if (!gcc || constant.type == Constant.Type.DEFINE) {
             return constant.name;
         }
@@ -951,7 +923,7 @@ public class Parser {
                 return block;
             }
         }
-        error(".loop not found");
+        error("loop not found");
         return null;
     }
 }

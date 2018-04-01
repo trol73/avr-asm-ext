@@ -4,6 +4,7 @@ import ru.trolsoft.asmext.data.Argument;
 import ru.trolsoft.asmext.data.Procedure;
 import ru.trolsoft.asmext.files.OutputFile;
 import ru.trolsoft.asmext.processor.*;
+import ru.trolsoft.asmext.utils.AsmInstruction;
 import ru.trolsoft.asmext.utils.AsmUtils;
 import ru.trolsoft.asmext.utils.TokenString;
 
@@ -14,12 +15,12 @@ import static ru.trolsoft.asmext.compiler.AsmInstr.BRANCH_IF_FLAG_CLEAR_MAP;
 import static ru.trolsoft.asmext.compiler.AsmInstr.BRANCH_IF_FLAG_SET_MAP;
 import static ru.trolsoft.asmext.compiler.Cmd.*;
 
-public class Compiler extends BaseCompiler {
+public class MainCompiler extends BaseCompiler {
 
     private final ExpressionsCompiler expressionsCompiler;
 
 
-    public Compiler(Parser parser) {
+    public MainCompiler(Parser parser) {
         super(parser);
         this.expressionsCompiler = new ExpressionsCompiler(parser);
     }
@@ -189,129 +190,65 @@ public class Compiler extends BaseCompiler {
         return compileIf(expr, false);
     }
 
-    public boolean compileIf(TokenString src, Expression expr, boolean inverse, OutputFile out) throws SyntaxException {
-        setup(src, out);
+    public boolean compileIf(TokenString src, Expression expr, boolean inverse) throws SyntaxException {
+        setup(src);
         return compileIf(expr, inverse);
     }
 
-    private boolean compileIf(Expression expr, boolean inverse) throws SyntaxException {
-        checkExpressionMinLength(expr, 5);
-        boolean signed;
-        Token t = expr.get(1);
-
-        if (t.isSomeString("s")) {
-            signed = true;
-            expr.remove(1);
-        } else if (t.isSomeString("u")) {
-            signed = false;
-            expr.remove(1);
+    private AsmInstruction compileIfBodyInstruction(Expression expr) throws SyntaxException {
+        Token firstBodyToken = expr.getFirst();
+        if (firstBodyToken.isKeyword("goto") || "rjmp".equals(firstBodyToken.asString())) {
+            checkExpressionSize(expr, 2);
+            return new AsmInstruction(RJMP, expr.getLast());
+        } else if (firstBodyToken.isKeyword("continue") && parser.getCurrentCycleBlock() != null) {
+            checkExpressionSize(expr, 1);
+            return new AsmInstruction(RJMP, parser.getLastBlock().getLabelStartToken());
+        } else if (firstBodyToken.isKeyword("break") && parser.getCurrentCycleBlock() != null) {
+            return new AsmInstruction(RJMP, parser.getLastBlock().buildEndLabelToken());
         } else {
-            signed = false;
-        }
-        Token label = null;
-        Cmd command = null;
-        AsmUtils.Instruction instruction = null;
-        int closeBracketLastIndex;
-        // TODO убрать частные случаи инструкций
-        if (expr.getLast(1).isKeyword("goto") || "rjmp".equals(expr.getLast(1).asString())) {
-            command = RJMP;
-            label = expr.getLast();
-            closeBracketLastIndex = 2;
-        } else if ("rcall".equals(expr.getLast(1).asString())) {
-            command = RCALL;
-            label = expr.getLast();
-            closeBracketLastIndex = 2;
-        } else if ("ret".equals(expr.getLast().asString())) {
-            command = RET;
-            closeBracketLastIndex = 1;
-        } else if ("reti".equals(expr.getLast().asString())) {
-            command = RETI;
-            closeBracketLastIndex = 1;
-        } else if ("continue".equals(expr.getLast().asString()) && parser.getCurrentCycleBlock() != null) {
-            command = RJMP;
-            label = new Token(Token.TYPE_OTHER, parser.getLastBlock().getLabelStart());
-            closeBracketLastIndex = 1;
-        } else if ("break".equals(expr.getLast().asString()) && parser.getCurrentCycleBlock() != null) {
-            command = RJMP;
-            label = new Token(Token.TYPE_OTHER, parser.getLastBlock().buildEndLabel());
-            closeBracketLastIndex = 1;
-        } else {
-            int bracketCode = 1;
-            closeBracketLastIndex = 0;
-            for (int i = 2; i < expr.size(); i++) {
-                Token next = expr.get(i);
-                if (next.isOperator(")")) {
-                    bracketCode--;
-                    if (bracketCode == 0) {
-                        closeBracketLastIndex = i;
-                        break;
-                    }
-                } else if (next.isOperator("(")) {
-                    bracketCode++;
+            OutputFile tempOut = new OutputFile();
+            if (new ExpressionsCompiler(parser).compile(src, expr, tempOut)) {
+                if (tempOut.size() != 1) {
+                    invalidExpressionError("too big, one command expected");
                 }
-            }
-            if (closeBracketLastIndex > 0) {
-                Expression subexpr = expr.subExpression(closeBracketLastIndex+1);
-                OutputFile tempOut = new OutputFile();
-                try {
-                    new ExpressionsCompiler(parser).compile(src, subexpr, tempOut);
-                    if (tempOut.size() != 1) {
-                        invalidExpressionError("too big, one command expected");
-                    }
-                    instruction = AsmUtils.parseLine(tempOut.get(0));
-                } catch (SyntaxException e) {
-                    invalidExpressionError();
-                }
-                closeBracketLastIndex = expr.size() - closeBracketLastIndex - 1;
+                return AsmUtils.parseLine(tempOut.get(0));
             } else {
-                invalidExpressionError();
+                return AsmUtils.parseExpression(expr);
             }
         }
-        if (!expr.get(1).isOperator("(") || !expr.getLast(closeBracketLastIndex).isOperator(")")) {
-            invalidExpressionError();
-        }
+    }
 
-        Token a1 = expr.get(2);
-        Token a2 = expr.get(3);
-        Token a3 = expr.get(4);
-        Token a4 = expr.size() > 5 ? expr.get(5) : null;
+    private boolean compileIf(Expression condition, Expression bodyExpr, boolean inverse, boolean signed) throws SyntaxException {
+        AsmInstruction instruction = compileIfBodyInstruction(bodyExpr);
+        if (instruction == null) {
+            unsupportedOperationError();
+            return false;
+        }
+        if (condition.getFirst().isOperator("!")) {
+            inverse = !inverse;
+            condition.removeFirst();
+        }
+        Token a1 = condition.getFirst();
+        Token a2 = condition.getIfExist(1);
+        Token a3 = condition.getIfExist(2);
+        Token label = instruction.getCommand() == RJMP ? instruction.getArg1Token() : null;
         if (a1.isFlag()) {
             if (label == null) {
                 unsupportedOperationError();
             }
-            compileIfFlagExpression(inverse, a1, label);
-        } else if (a1.isOperator("!") && a2.isFlag()) {
-            compileIfFlagExpression(!inverse, a2, label);
+            checkExpressionSize(condition, 1);
+            compileIfFlagExpression(inverse, a1, instruction.getArg1Token());
         } else if (a1.isRegisterBit()) {
-            if (instruction != null) {
-                compileIfRegisterBitExpression(inverse, a1, instruction.getCommand(), instruction.getArg1Token(), instruction.getArg2Str());
-            } else {
-                compileIfRegisterBitExpression(inverse, a1, command, label, null);
-            }
-        } else if (a1.isOperator("!") && a2.isRegisterBit()) {
-            if (instruction != null) {
-                compileIfRegisterBitExpression(!inverse, a2, instruction.getCommand(), instruction.getArg1Token(), instruction.getArg2Str());
-            } else {
-                compileIfRegisterBitExpression(!inverse, a2, command, label, null);
-            }
+            checkExpressionSize(condition, 1);
+            compileIfRegisterBitExpression(inverse, a1, instruction.getCommand(), instruction.getArg1Token(), instruction.getArg2Str());
         } else if (a1.isArrayIo() && a2.isOperator(".")) {
-            if (instruction != null) {
-                compileIfIoBitExpression(inverse, a1, a3, instruction.getCommand(), instruction.getArg1Token(), instruction.getArg2Str());
-            } else {
-                compileIfIoBitExpression(inverse, a1, a3, command, label, null);
-            }
-        } else if (a1.isOperator("!") && a2.isArrayIo() && a3.isOperator(".") && a4 != null) {
-            if (instruction != null) {
-                compileIfIoBitExpression(!inverse, a2, a4, instruction.getCommand(), instruction.getArg1Token(), instruction.getArg2Str());
-            } else {
-                compileIfIoBitExpression(!inverse, a2, a4, command, label, null);
-            }
-        } else if (instruction != null && a1.isRegister() && a2.isOperator("!=") && a3.isRegister() && a4 != null && a4.isOperator(")")) {
+            checkExpressionSize(condition, 3);
+            compileIfIoBitExpression(inverse, a1, a3, instruction.getCommand(), instruction.getArg1Token(), instruction.getArg2Str());
+        } else if (a1.isRegister() && a2.isOperator("!=") && a3.isRegister()) {
+            checkExpressionSize(condition, 3);
             compileIfTwoRegsNotEquals(a1, a3, instruction);
         } else {
-            if (instruction != null || a4 == null || !a4.isOperator(")")) {
-                invalidExpressionError();
-            }
+            checkExpressionSize(condition, 3);
             out.addComment(src);
             String operation = a2.asString();
             if (inverse) {
@@ -324,9 +261,52 @@ public class Compiler extends BaseCompiler {
             compileIfBinaryExpression(signed, operation, a1, a3, label);
         }
         return true;
+
     }
 
-    private void compileIfTwoRegsNotEquals(Token reg1, Token reg2, AsmUtils.Instruction instruction) throws SyntaxException {
+    private boolean compileIf(Expression expr, boolean inverse) throws SyntaxException {
+        if (!expr.getFirst().isKeyword("if")) {
+            throw new RuntimeException("'if' not found");
+        }
+        checkExpressionMinLength(expr, 5);
+        expr.removeFirst();
+        boolean signed;
+        Token t = expr.getFirst();
+
+        if (t.isSomeString("s")) {
+            signed = true;
+            expr.removeFirst();
+        } else if (t.isSomeString("u")) {
+            signed = false;
+            expr.removeFirst();
+        } else {
+            signed = false;
+        }
+        if (!expr.getFirst().isOperator("(")) {
+            unexpectedExpressionError("if without ()");
+        }
+        int closeBracketIndex = expr.findCloseBracketIndex(0);
+        if (closeBracketIndex < 0) {
+            unexpectedExpressionError("close bracket not found");
+        }
+        Expression condition = expr.subExpression(1, closeBracketIndex-1);
+        Expression body = expr.subExpression(closeBracketIndex + 1);
+        if (condition.operatorsCount("||") > 0) {
+            List<Expression> conditionsList = condition.splitByOperator("||");
+            boolean result = true;
+            for (Expression c : conditionsList) {
+                if (!compileIf(c, body, inverse, signed)) {
+                    result = false;
+                }
+            }
+            return result;
+        } else {
+            return compileIf(condition, body, inverse, signed);
+        }
+    }
+
+
+    private void compileIfTwoRegsNotEquals(Token reg1, Token reg2, AsmInstruction instruction) throws SyntaxException {
         addCommand(CPSE, reg1, reg2);
         addCommand(instruction);
     }
@@ -442,8 +422,7 @@ public class Compiler extends BaseCompiler {
                 int j = left.size() - 1 - i;
                 Token reg1 = left.getReg(j);
                 Token reg2 = right.getReg(j);
-                Cmd cmd = i == 0 ? CP : CPC;
-                addCommand(cmd, reg1, reg2);
+                addCommand(i == 0 ? CP : CPC, reg1, reg2);
             }
         } else {
             unsupportedOperationError();

@@ -18,7 +18,7 @@ public class Expression implements Iterable<Token> {
         String[] operators = {
                 "=", "==", "!=", ">=", "<=", "+", "-", "&", "|", ":", ",", "<<", ">>",
                 "+=", "-=", "&=", "|=", "<<=", ">>=", "(", ")", "++", "--", ".", "!",
-                "{", "}"
+                "{", "}", "||", "&&"
         };
         OPERATORS = new HashSet<>(Arrays.asList(operators));
         String[] keywords = {
@@ -332,11 +332,70 @@ public class Expression implements Iterable<Token> {
         return subExpression(0);
     }
 
+    public int findCloseBracketIndex(int openBracketIndex) {
+        if (openBracketIndex >= size()-1) {
+            return -1;
+        }
+        String openBracket = get(openBracketIndex).asString();
+        String closeBracket = getCloseBracket(openBracket);
+        if (closeBracket == null) {
+            return -1;
+        }
+        int bracketCode = 1;
+        for (int i = openBracketIndex+1; i < size(); i++) {
+            Token t = get(i);
+            if (t.isOperator(closeBracket)) {
+                bracketCode--;
+                if (bracketCode == 0) {
+                    return i;
+                }
+            } else if (t.isOperator(openBracket)) {
+                bracketCode++;
+            }
+        }
+        return -1;
+    }
+
+    private static String getCloseBracket(String bracket) {
+        switch (bracket) {
+            case "(":
+                return ")";
+            case "{":
+                return "}";
+            case "[":
+                return "]";
+        }
+        return null;
+    }
+
+    public List<Expression> splitByOperator(String operator) {
+        List<Expression> result = new ArrayList<>();
+        int startIndex = 0;
+        for (int i = 0; i < size(); i++) {
+            Token t = get(i);
+            if (t.isOperator(operator)) {
+                Expression subexpr = subExpression(startIndex, i-1);
+                startIndex = i+1;
+                result.add(subexpr);
+            }
+        }
+        if (startIndex < size()) {
+            Expression subexpr = subExpression(startIndex);
+            result.add(subexpr);
+        }
+        return result;
+    }
+
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
+        Token prev = null;
         for (Token t : list) {
+            if (prev != null && !prev.isOperator() && !t.isOperator()) {
+                sb.append(' ');
+            }
             sb.append(t);
+            prev = t;
         }
         return sb.toString();
     }

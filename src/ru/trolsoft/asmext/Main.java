@@ -85,6 +85,19 @@ public class Main {
     }
 }
 /*
+--------------
+    if (r1 == r2 && r3[0] == 0) {
+        sei
+        r25 = 0
+    }
+
+            if (r1 == r2) {
+                if (r3[0] == 0) {
+                    sei
+                    r25 = 0
+                }
+            }
+--------------
 
 .pin keyboard_clk = D[0]
 
@@ -146,10 +159,6 @@ adc r0, rmp
 
     rmp |= 1 << bLcdRs 	; set Rs to one
         rmp[bLcdRs] = 1
-
-	if (rmp == cCR) goto @NoPar
-	if (rmp == cLF) goto @NoPar
-        if (rmp == cCR || rmp == cLF) goto @NoPar
 
 
 

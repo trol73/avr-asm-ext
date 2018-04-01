@@ -238,4 +238,21 @@ class ExpressionTest {
         assertEquals(2, e.size());
         assertTrue(e.getFirst().isRegister("r1"));
     }
+
+    @Test
+    void testFindCloseBracket() {
+        e = exp("if (r21 == 0) goto lbl");
+        assertEquals(5, e.findCloseBracketIndex(1));
+        assertEquals(-1, e.findCloseBracketIndex(0));
+        e = exp("if ((r21 == 0)) goto lbl");
+        assertEquals(7, e.findCloseBracketIndex(1));
+        assertEquals(6, e.findCloseBracketIndex(2));
+        e = exp("");
+        assertEquals(-1, e.findCloseBracketIndex(10));
+    }
+
+    @Test
+    void testOrExpression() {
+        e = exp("(r21 == 0 || r21 == 10)");
+    }
 }

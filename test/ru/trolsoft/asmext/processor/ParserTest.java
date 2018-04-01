@@ -47,6 +47,15 @@ class ParserTest {
         }
     }
 
+    boolean parseLineError(String s) {
+        try {
+            parser.parseLine(s);
+            return false;
+        } catch (SyntaxException e) {
+            return true;
+        }
+    }
+
 
     @Test
     void testPush() throws SyntaxException {
@@ -158,7 +167,7 @@ class ParserTest {
     }
 
     @Test
-    void testWrongBlockrror() {
+    void testWrongBlockError() {
         parser = new Parser();
         boolean error;
         try {
@@ -281,33 +290,14 @@ class ParserTest {
         assertNotNull(parser.getVariable("data_ptr"));
         assertNotNull(parser.getVariable("data_ptr1"));
         assertNotNull(parser.getVariable("data_ptr2"));
+    }
 
-
-        boolean error;
-        try {
-            parser.parseLine(".extern = : ptr");
-            error = false;
-        } catch (SyntaxException e) {
-            error = true;
-        }
-        assertTrue(error);
-
-        try {
-            parser.parseLine(".extern 123 : ptr");
-            error = false;
-        } catch (SyntaxException e) {
-            error = true;
-        }
-        assertTrue(error);
-
-        try {
-            parser.parseLine(".extern r23 : byte");
-            error = false;
-        } catch (SyntaxException e) {
-            error = true;
-        }
-        assertTrue(error);
-
+    @Test
+    void testExternError() {
+        parser = new Parser();
+        assertTrue(parseLineError(".extern = : ptr"));
+        assertTrue(parseLineError(".extern 123 : ptr"));
+        assertTrue(parseLineError(".extern r23 : byte"));
     }
 
     @Test
@@ -667,6 +657,26 @@ class ParserTest {
         assertEquals(3, parser.getOutput().size());
         assertEquals("ldi\tr24, BYTE1(COLOR)", parser.getOutput().get(1));
         assertEquals("ldi\tr25, BYTE2(COLOR)", parser.getOutput().get(2));
+    }
+
+
+    @Test
+    void testSet() throws SyntaxException {
+        Parser parser = new Parser();
+        parser.parseLine(".set COLOR = 0xffff");
+        assertEquals(1, parser.getOutput().size());
+        assertEquals(".set COLOR = 0xffff", parser.getOutput().get(0));
+        assertNotNull(parser.getConstant("COLOR"));
+        assertEquals("0xffff", parser.getConstant("COLOR").value);
+    }
+
+    @Test
+    void testSetError() {
+        parser = new Parser();
+        assertTrue(parseLineError(".set a"));
+        assertTrue(parseLineError(".set a ="));
+        assertTrue(parseLineError(".set ="));
+
     }
 
 

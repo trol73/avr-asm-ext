@@ -571,6 +571,7 @@ class ExpressionsCompilerTest {
         assertTrue(hasError("r1 = 5"));
         assertTrue(hasError("r1 |= 5"));
         assertTrue(hasError("r1 &= 5"));
+        assertTrue(hasError("if (r1 != 5) goto lbl"));
     }
 
 
