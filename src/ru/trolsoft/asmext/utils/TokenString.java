@@ -313,4 +313,10 @@ public class TokenString implements Comparable<TokenString>, CharSequence, Itera
         }
         return sb.toString();
     }
+
+    public void transformCommentToAsm() {
+        if (comment != null && comment.startsWith("//")) {
+            comment = ";" + comment.substring(2);
+        }
+    }
 }

@@ -79,7 +79,7 @@ class TokenStringTest {
         assertEquals(ts.getToken(0), "xx");
         assertEquals(ts.getTokens().get(0), "xx");
 
-        assertTrue(ts.size() == ts.getTokens().size());
+        assertEquals(ts.size(), ts.getTokens().size());
 
         ts = new TokenString("\t x=';';comment ; comment // comment");
         assertEquals(ts.getComment(), ";comment ; comment // comment");
@@ -94,7 +94,7 @@ class TokenStringTest {
         Iterator<String> i1 = ts.getTokens().iterator();
         Iterator<String> i2 = ts.iterator();
         while (true) {
-            assertTrue(i1.hasNext() == i2.hasNext());
+            assertEquals(i1.hasNext(), i2.hasNext());
             if (!i1.hasNext()) {
                 break;
             }
@@ -118,10 +118,10 @@ class TokenStringTest {
         assertArrayEquals(ts.codePoints().toArray(), s.codePoints().toArray());
         String s1 = "123";
         assertEquals(s.compareTo(s1), ts.compareTo(new TokenString(s1)));
-        assertTrue(ts.toString().equals(s));
-        assertTrue(s.equals(ts.toString()));
-        assertTrue(s.hashCode() == ts.hashCode());
-        assertTrue(s.length() == ts.length());
+        assertEquals(ts.toString(), s);
+        assertEquals(s, ts.toString());
+        assertEquals(s.hashCode(), ts.hashCode());
+        assertEquals(s.length(), ts.length());
 
     }
 

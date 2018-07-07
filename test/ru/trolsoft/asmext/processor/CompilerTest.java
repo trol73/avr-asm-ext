@@ -50,6 +50,9 @@ class CompilerTest {
 
     @Test
     void testIfGoto() throws SyntaxException {
+        parser = new Parser();
+        compiler = new MainCompiler(parser);
+
         testLine("if (r21 == 0) goto lbl", "tst\tr21\nbreq\tlbl");
         testLine("if (r30 != 0) goto lbl", "tst\tr30\nbrne\tlbl");
         testLine("if (r21 == 10) goto lbl", "cpi\tr21, 10\nbreq\tlbl");
@@ -84,9 +87,18 @@ class CompilerTest {
         testLine("if s(r1 <= r2) goto lbl", "cp\tr2, r1\nbrge\tlbl");
 
         testLine("if (r1 == 0) goto lbl ; comment", "tst\tr1\t\t; comment\nbreq\tlbl\t\t; comment");
-        testLine("if (r1 == 0) goto lbl // comment", "tst\tr1\t\t// comment\nbreq\tlbl\t\t// comment");
+        testLine("if (r1 == 0) goto lbl // comment", "tst\tr1\t\t; comment\nbreq\tlbl\t\t; comment");
 
         testLine("if (r21 < '9'+1) goto lbl", "cpi\tr21, '9'+1\nbrlo\tlbl");
+    }
+
+    @Test
+    void testGccComments() throws SyntaxException {
+        parser = new Parser(true);
+        compiler = new MainCompiler(parser);
+        testLine("if (r1 == 0) goto lbl ; comment", "tst\tr1\t\t; comment\nbreq\tlbl\t\t; comment");
+        testLine("if (r1 == 0) goto lbl // comment", "tst\tr1\t\t// comment\nbreq\tlbl\t\t// comment");
+
     }
 
     @Test
@@ -107,19 +119,19 @@ class CompilerTest {
         proc.addArg(new Alias("y", new Token(Token.TYPE_REGISTER, "r22")));
         parser.procedures.put(proc.name, proc);
 
-        testLine("rcall my_proc (x: 1, y: r0) // comment", "ldi\tr24, 1\nmov\tr22, r0\nrcall\tmy_proc\t\t// comment");
+        testLine("rcall my_proc (x: 1, y: r0) // comment", "ldi\tr24, 1\nmov\tr22, r0\nrcall\tmy_proc\t\t; comment");
         testLine("rjmp my_proc (x: r24, y: r0) ; comment", "mov\tr22, r0\nrjmp\tmy_proc\t\t; comment");
         testLine("rjmp my_proc (x: r24 + 1, y: r0) ; comment", "inc r24\nmov\tr22, r0\nrjmp\tmy_proc\t\t; comment");
         testLine("rjmp my_proc (x: r24 + 1*2, y: r0) ; comment", "subi r24, -(1*2)\nmov\tr22, r0\nrjmp\tmy_proc\t\t; comment");
 
         testLine("rjmp my_proc ; comment", "rjmp\tmy_proc\t\t; comment");
-        testLine("rcall my_proc // comment", "rcall\tmy_proc\t\t// comment");
+        testLine("rcall my_proc // comment", "rcall\tmy_proc\t\t; comment");
 
         proc = new Procedure("my_proc");
         parser.procedures.clear();
         proc.addArg(new Alias("x", new Token(Token.TYPE_REGISTER, "r24")));
         parser.procedures.put(proc.name, proc);
-        testLine("rcall my_proc (10) // comment", "ldi\tr24, 10\nrcall\tmy_proc\t\t// comment");
+        testLine("rcall my_proc (10) // comment", "ldi\tr24, 10\nrcall\tmy_proc\t\t; comment");
         testLine("rcall my_proc (xl)", "mov\tr24, xl\nrcall\tmy_proc");
 
         parser.parseLine(".extern ext_proc (var: r24)");
@@ -291,6 +303,19 @@ class CompilerTest {
     }
 
     @Test
+    void testIfThreeOrGoto() throws SyntaxException {
+        testLine("if s(r21[1] || r21 == 10 || r21 < 0) goto lbl", "sbrc\tr21, 1\nrjmp\tlbl\ncpi\tr21, 10\nbreq\tlbl\ntst\tr21\nbrmi\tlbl");
+
+//        testLine("if s(r21 >= 10) goto lbl", "cpi\tr21, 10\nbrge\tlbl");
+    }
+
+    @Test
+    void testIfTwoAndGoto() throws SyntaxException {
+        testLine("if (r21 == 0 && r21 == 10) goto lbl", "tst\tr21\nbrne\t__if_and_0\ncpi\tr21, 10\nbreq\tlbl\n__if_and_0:");
+        testLine("if (ZL == 1 && ZL == 7) goto @clockwise", "cpi\tZL, 1\nbrne\t__if_and_0\ncpi\tZL, 7\nbreq\t@clockwise\n__if_and_0:");
+    }
+
+    @Test
     void testNestedIf() throws SyntaxException {
         parser = new Parser();
         parser.parseLine("if (r11 == r12) {");
@@ -300,25 +325,77 @@ class CompilerTest {
         parser.parseLine("   }");
         parser.parseLine("}");
         OutputFile out = parser.getOutput();
-        assertEquals(9, out.size());
-        assertEquals("cp\tr11, r12", out.get(1));
-        assertEquals("brne\t__if_1", out.get(2));
-        assertEquals("sbrc\tr22, 0", out.get(3).trim());
-        assertEquals("rjmp\t__if_2", out.get(4).trim());
-        assertEquals("ldi\tr30, 1", out.get(5).trim());
-        assertEquals("rjmp\tlbl", out.get(6).trim());
-        assertEquals("__if_2:", out.get(7));
-        assertEquals("__if_1:", out.get(8));
+        assertEquals(8, out.size());
+        assertEquals("cpse\tr11, r12", out.get(0));
+        assertEquals("rjmp\t__if_1", out.get(1));
+        assertEquals("sbrc\tr22, 0", out.get(2).trim());
+        assertEquals("rjmp\t__if_2", out.get(3).trim());
+        assertEquals("ldi\tr30, 1", out.get(4).trim());
+        assertEquals("rjmp\tlbl", out.get(5).trim());
+        assertEquals("__if_2:", out.get(6));
+        assertEquals("__if_1:", out.get(7));
     }
 
     @Test
-    void testDoubleIfWithBlock() throws SyntaxException {
+    void testDoubleIfOrWithBlock() throws SyntaxException {
         parser = new Parser();
         parser.parseLine("if (r11 == r12 || !r22[0]) {");
         parser.parseLine("   r30 = 1");
         parser.parseLine("   rjmp lbl");
         parser.parseLine("}");
-        System.out.println(parser.getOutput());
+        OutputFile out = parser.getOutput();
+        assertEquals(9, out.size());
+        assertEquals("cp\tr11, r12", out.get(1).trim());
+        assertEquals("breq\t__if_1_body", out.get(2).trim());
+        assertEquals("sbrc\tr22, 0", out.get(3).trim());
+        assertEquals("rjmp\t__if_1", out.get(4).trim());
+        assertEquals("__if_1_body:", out.get(5).trim());
+        assertEquals("ldi\tr30, 1", out.get(6).trim());
+        assertEquals("rjmp\tlbl", out.get(7).trim());
+        assertEquals("__if_1:", out.get(8).trim());
+    }
+
+    @Test
+    void testDoubleIfAndWithBlock() throws SyntaxException {
+        parser = new Parser();
+        parser.parseLine("if (r11 == r12 && !r22[0]) {");
+        parser.parseLine("   r30 = 1");
+        parser.parseLine("   rjmp lbl");
+        parser.parseLine("}");
+        OutputFile out = parser.getOutput();
+        assertEquals(7, out.size());
+        assertEquals("cpse\tr11, r12", out.get(0));
+        assertEquals("rjmp\t__if_1", out.get(1));
+        assertEquals("sbrc\tr22, 0", out.get(2).trim());
+        assertEquals("rjmp\t__if_1", out.get(3).trim());
+        assertEquals("ldi\tr30, 1", out.get(4).trim());
+        assertEquals("rjmp\tlbl", out.get(5).trim());
+        assertEquals("__if_1:", out.get(6));
+    }
+
+    @Test
+    void testCompareRegisterBlock() throws SyntaxException {
+        parser = new Parser();
+        parser.parseLine("if (r21 != ZH) {");
+        parser.parseLine("  cli");
+        parser.parseLine("  nop");
+        parser.parseLine("}");
+        OutputFile out = parser.getOutput();
+//System.out.println(out);
+        assertEquals(6, out.size());
+        assertEquals("cp\tr21, ZH", out.get(1));
+        assertEquals("breq\t__if_1", out.get(2));
+        assertEquals("cli", out.get(3).trim());
+        assertEquals("nop", out.get(4).trim());
+        assertEquals("__if_1:", out.get(5));
+
+//        cpse	r21, ZH
+//        rjmp	__if_1
+//        cli
+//        nop
+//        __if_1:
+        //testLine("if (r21 != ZH) {\ncli\nnop\n}", "cpse\tr21, ZH");
+
     }
 
 //    @Test

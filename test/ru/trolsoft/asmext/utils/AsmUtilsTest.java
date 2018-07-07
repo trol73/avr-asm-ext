@@ -4,7 +4,9 @@ import org.junit.jupiter.api.Test;
 import ru.trolsoft.asmext.compiler.Cmd;
 import ru.trolsoft.asmext.processor.SyntaxException;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.fail;
 import static ru.trolsoft.asmext.utils.AsmUtils.*;
 
 class AsmUtilsTest {

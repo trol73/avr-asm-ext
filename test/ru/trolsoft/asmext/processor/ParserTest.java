@@ -252,7 +252,7 @@ class ParserTest {
         parser.preloadLine(".DEF rmp = R16");
         parser.parseLine(".proc my_proc_2 (val: ZH.ZL.rmp)");
         assertEquals("my_proc_2", parser.currentProcedure.name);
-        assertTrue(parser.currentProcedure.args.size() == 1);
+        assertEquals(1, parser.currentProcedure.args.size());
 //        assertTrue(parser.currentProcedure.args.containsKey("x"));
 //        assertEquals("r24", parser.currentProcedure.args.get("x").register);
 //        assertEquals("r22", parser.currentProcedure.args.get("y").register);
@@ -266,21 +266,21 @@ class ParserTest {
     void testExternProc() throws SyntaxException {
         Parser parser = new Parser();
         parser.parseLine(".extern fillCharXY (x:r24, y:r22, char:r20)");
-        assertTrue(parser.procedures.size() == 1);
+        assertEquals(1, parser.procedures.size());
 
         assertEquals(parser.procedures.get("fillCharXY").name, "fillCharXY");
-        assertTrue(parser.procedures.get("fillCharXY").args.size() == 3);
+        assertEquals(3, parser.procedures.get("fillCharXY").args.size());
         assertEquals("r24", parser.procedures.get("fillCharXY").args.get("x").register.asString());
         assertEquals("r22", parser.procedures.get("fillCharXY").args.get("y").register.asString());
         assertEquals("r20", parser.procedures.get("fillCharXY").args.get("char").register.asString());
 
         parser.parseLine(".extern cmd_color : word");
-        assertTrue(parser.variables.size() == 1);
-        assertTrue(parser.variables.get("cmd_color").getSize() == 2);
+        assertEquals(1, parser.variables.size());
+        assertEquals(2, parser.variables.get("cmd_color").getSize());
 
         parser.parseLine(".extern cmd_x : byte");
-        assertTrue(parser.variables.size() == 2);
-        assertTrue(parser.variables.get("cmd_x").getSize() == 1);
+        assertEquals(2, parser.variables.size());
+        assertEquals(1, parser.variables.get("cmd_x").getSize());
 
         parser.parseLine(".extern data_ptr: prgptr");
         parser.parseLine("data_ptr:");
@@ -308,7 +308,7 @@ class ParserTest {
         parser.parseLine("rjmp @lbl");
         parser.parseLine(".endproc ; my_proc");
 
-        assertTrue(parser.getOutput().size() == 5);
+        assertEquals(5, parser.getOutput().size());
         assertEquals("my_proc:", parser.getOutput().get(0));
         assertEquals("; .proc my_proc", parser.getOutput().get(1));
         assertEquals("my_proc__lbl:", parser.getOutput().get(2));
@@ -322,7 +322,7 @@ class ParserTest {
         parser.parseLine(".proc my_proc");
         parser.parseLine(".args x(r24), y(r22)");
         assertEquals("my_proc", parser.currentProcedure.name);
-        assertTrue(parser.currentProcedure.args.size() == 2);
+        assertEquals(2, parser.currentProcedure.args.size());
         assertTrue(parser.currentProcedure.args.containsKey("x"));
         assertTrue(parser.currentProcedure.args.containsKey("y"));
         assertEquals("r24", parser.currentProcedure.args.get("x").register.asString());
@@ -330,7 +330,7 @@ class ParserTest {
         assertEquals("r22", parser.currentProcedure.args.get("y").register.asString());
         assertEquals(Token.TYPE_REGISTER, parser.currentProcedure.args.get("y").register.getType());
         parser.parseLine(".endproc ; my_proc");
-        assertTrue(parser.currentProcedure == null);
+        assertNull(parser.currentProcedure);
 
 
         parser = new Parser();
@@ -363,7 +363,7 @@ class ParserTest {
         assertTrue(parser.constants.containsKey("abc"));
         assertEquals(parser.constants.get("abc").value, "123");
         assertEquals(parser.constants.get("abc").type, Constant.Type.EQU);
-        assertTrue(parser.getOutput().size() == 1);
+        assertEquals(1, parser.getOutput().size());
         parser.parseLine("r20 = abc");
         parser.getOutput().startNewLine();
         assertTrue(parser.getOutput().get(1).endsWith("ldi\tr20, 123"));
@@ -374,7 +374,7 @@ class ParserTest {
         assertTrue(parser.constants.containsKey("abc"));
         assertEquals(parser.constants.get("abc").value, "123");
         assertEquals(parser.constants.get("abc").type, Constant.Type.EQU);
-        assertTrue(parser.getOutput().size() == 0);
+        assertEquals(0, parser.getOutput().size());
         parser.parseLine("r20 = abc");
         parser.getOutput().startNewLine();
         assertTrue(parser.getOutput().get(0).endsWith("ldi\tr20, 123"));
@@ -385,7 +385,7 @@ class ParserTest {
         assertTrue(parser.constants.containsKey("aBc"));
         assertEquals(parser.constants.get("aBc").value, "123");
         assertEquals(parser.constants.get("aBc").type, Constant.Type.EQU);
-        assertTrue(parser.getOutput().size() == 0);
+        assertEquals(0, parser.getOutput().size());
         parser.parseLine("r20 = aBc");
         parser.getOutput().startNewLine();
         assertTrue(parser.getOutput().get(0).endsWith("ldi\tr20, 123"));
@@ -435,8 +435,8 @@ class ParserTest {
         Parser parser = new Parser();
         parser.parseLine(".use r16 as rmp");
         assertTrue(parser.globalAliases.containsKey("rmp"));
-        assertEquals(parser.globalAliases.get("rmp").register.toString(), "r16");
-        assertEquals(parser.globalAliases.get("rmp").register.getType(), Token.TYPE_REGISTER);
+        assertEquals("r16", parser.globalAliases.get("rmp").register.toString());
+        assertEquals(Token.TYPE_REGISTER, parser.globalAliases.get("rmp").register.getType());
         parser.parseLine("rmp = 0");
         assertTrue(parser.getOutput().getLastLine().contains("clr\tr16"));
         parser.parseLine("rmp = 'a'");
@@ -676,7 +676,6 @@ class ParserTest {
         assertTrue(parseLineError(".set a"));
         assertTrue(parseLineError(".set a ="));
         assertTrue(parseLineError(".set ="));
-
     }
 
 

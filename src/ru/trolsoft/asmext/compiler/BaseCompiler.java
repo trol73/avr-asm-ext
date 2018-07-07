@@ -28,11 +28,13 @@ abstract class BaseCompiler extends Errors {
     void setup(TokenString src, OutputFile out) {
         this.src = src;
         this.out = out;
+        if (!parser.gcc) {
+            src.transformCommentToAsm();
+        }
     }
 
     void setup(TokenString src) {
-        this.src = src;
-        this.out = parser.getOutput();
+        this.setup(src, parser.getOutput());
     }
 
     void addCommand(Cmd cmd, String arg1, String arg2) throws SyntaxException {

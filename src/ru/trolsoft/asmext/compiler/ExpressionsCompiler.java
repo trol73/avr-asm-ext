@@ -677,9 +677,9 @@ public class ExpressionsCompiler extends BaseCompiler {
             Token bitIndex = dest.getBitIndex();
             String bitMask = dest.getBitIndex().isNumber() ? binByteStr(1 << bitIndex.getNumberValue()) : "1<<" + bitIndex.asString();
             if (val.getNumberValue() == 1) {
-                addCommand(SBR, dest, bitMask);
+                addCommand(SBR, dest.asString(), bitMask);
             } else if (val.getNumberValue() == 0) {
-                addCommand(CBR, dest, bitMask);
+                addCommand(CBR, dest.asString(), bitMask);
             } else {
                 unsupportedOperationError("1 or 0 expected");
             }

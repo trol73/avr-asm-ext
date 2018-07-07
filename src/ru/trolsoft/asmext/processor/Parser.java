@@ -298,7 +298,7 @@ public class Parser {
         loopsCompiler.compileLoopStart(str, expr);
     }
 
-    private String generateLabelName(String baseName) {
+    public String generateLabelName(String baseName) {
         return (currentProcedure != null ? currentProcedure.name : "") + "__" + baseName + lineNumber;
     }
 
@@ -318,7 +318,7 @@ public class Parser {
         }
         expr.set(expr.size() - 1, new Token(Token.TYPE_KEYWORD, "goto"));
         expr.add(new Token(Token.TYPE_OTHER, label));
-        compiler.compileIf(src, expr, true);
+        compiler.compileIfExpressionBlock(src, expr, true);
         Block block = new Block(BLOCK_IF, expr, lineNumber, label);
         blocks.push(block);
     }

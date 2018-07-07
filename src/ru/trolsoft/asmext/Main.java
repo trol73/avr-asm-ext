@@ -85,19 +85,21 @@ public class Main {
     }
 }
 /*
---------------
-    if (r1 == r2 && r3[0] == 0) {
-        sei
-        r25 = 0
-    }
 
-            if (r1 == r2) {
-                if (r3[0] == 0) {
-                    sei
-                    r25 = 0
-                }
-            }
---------------
+push	r1
+    r1 = r0
+	swap	r1
+	r1 &= 0x0F
+	io[PORTB] = r1
+pop rmp
+
+
+store (r1) {
+    r1 = r0
+	swap	r1
+	r1 &= 0x0F
+	io[PORTB] = r1
+}
 
 .pin keyboard_clk = D[0]
 
@@ -167,25 +169,7 @@ if (r2.r1 < ZH.ZL) goto @2 ; ended subtraction
 
 
 
-	if (ZL == 1) goto Interval_enc_clockwise
-	if (ZL == 7) goto Interval_enc_clockwise
-	if (ZL == 8) goto Interval_enc_clockwise
-	if (ZL == 14) goto Interval_enc_clockwise
 
-
-
-if (cond) {
-    e1
-} else {
-    e2
-}
-
-if (!cond) goto @le     | if
-    e1                  | if
-    rjmp @lf            | else
-@le:                    | else
-    e2                  | else
-@lf:                    | else
 
 
 

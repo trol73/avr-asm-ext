@@ -43,7 +43,7 @@ public class MainCompiler extends BaseCompiler {
                 compileCall(parser.buildExpression(src));
                 break;
             case "if":
-                if (compileIf(parser.buildExpression(src))) {
+                if (compileIfNoBlock(parser.buildExpression(src))) {
                     break;
                 }
             default:
@@ -185,14 +185,13 @@ public class MainCompiler extends BaseCompiler {
     }
 
 
-    private boolean compileIf(Expression expr) throws SyntaxException {
-        // if (a || b || c) action -> if (a) action, if (b) action, if (c) action
-        return compileIf(expr, false);
+    private boolean compileIfNoBlock(Expression expr) throws SyntaxException {
+        return compileIfExpression(expr, false, false);
     }
 
-    public boolean compileIf(TokenString src, Expression expr, boolean inverse) throws SyntaxException {
+    public boolean compileIfExpressionBlock(TokenString src, Expression expr, boolean inverse) throws SyntaxException {
         setup(src);
-        return compileIf(expr, inverse);
+        return compileIfExpression(expr, inverse, true);
     }
 
     private AsmInstruction compileIfBodyInstruction(Expression expr) throws SyntaxException {
@@ -218,7 +217,7 @@ public class MainCompiler extends BaseCompiler {
         }
     }
 
-    private boolean compileIf(Expression condition, Expression bodyExpr, boolean inverse, boolean signed) throws SyntaxException {
+    private boolean compileSimpleIf(Expression condition, Expression bodyExpr, boolean inverse, boolean signed) throws SyntaxException {
         AsmInstruction instruction = compileIfBodyInstruction(bodyExpr);
         if (instruction == null) {
             unsupportedOperationError();
@@ -232,6 +231,7 @@ public class MainCompiler extends BaseCompiler {
         Token a2 = condition.getIfExist(1);
         Token a3 = condition.getIfExist(2);
         Token label = instruction.getCommand() == RJMP ? instruction.getArg1Token() : null;
+        boolean notEqualCompare = a2 != null && ((a2.isOperator("!=") && !inverse) || (a2.isOperator("==") && inverse));
         if (a1.isFlag()) {
             if (label == null) {
                 unsupportedOperationError();
@@ -244,7 +244,7 @@ public class MainCompiler extends BaseCompiler {
         } else if (a1.isArrayIo() && a2.isOperator(".")) {
             checkExpressionSize(condition, 3);
             compileIfIoBitExpression(inverse, a1, a3, instruction.getCommand(), instruction.getArg1Token(), instruction.getArg2Str());
-        } else if (a1.isRegister() && a2.isOperator("!=") && a3.isRegister()) {
+        } else if (a1.isRegister() && notEqualCompare && a3.isRegister()) {
             checkExpressionSize(condition, 3);
             compileIfTwoRegsNotEquals(a1, a3, instruction);
         } else {
@@ -264,45 +264,107 @@ public class MainCompiler extends BaseCompiler {
 
     }
 
-    private boolean compileIf(Expression expr, boolean inverse) throws SyntaxException {
+    private boolean compileIfExpression(Expression expr, boolean inverse, boolean isBlock) throws SyntaxException {
         if (!expr.getFirst().isKeyword("if")) {
             throw new RuntimeException("'if' not found");
         }
         checkExpressionMinLength(expr, 5);
-        expr.removeFirst();
-        boolean signed;
-        Token t = expr.getFirst();
-
-        if (t.isSomeString("s")) {
-            signed = true;
-            expr.removeFirst();
-        } else if (t.isSomeString("u")) {
-            signed = false;
-            expr.removeFirst();
-        } else {
-            signed = false;
-        }
+        expr.removeFirst(); // if
+        boolean signed = checkSignedIf(expr);
         if (!expr.getFirst().isOperator("(")) {
             unexpectedExpressionError("if without ()");
         }
         int closeBracketIndex = expr.findCloseBracketIndex(0);
         if (closeBracketIndex < 0) {
-            unexpectedExpressionError("close bracket not found");
+            unexpectedExpressionError("close bracket not found ')'");
         }
         Expression condition = expr.subExpression(1, closeBracketIndex-1);
         Expression body = expr.subExpression(closeBracketIndex + 1);
-        if (condition.operatorsCount("||") > 0) {
-            List<Expression> conditionsList = condition.splitByOperator("||");
-            boolean result = true;
-            for (Expression c : conditionsList) {
-                if (!compileIf(c, body, inverse, signed)) {
+
+        boolean hasOr = condition.operatorsCount("||") > 0;
+        boolean hasAnd = condition.operatorsCount("&&") > 0;
+        if (hasOr && hasAnd) {
+            unsupportedOperationError();
+        }
+        if (hasOr) {
+            return compileMultipleOrIf(condition, body, signed, inverse, isBlock);
+        } else if (hasAnd) {
+            return compileMultipleAndIf(condition, body, signed, inverse, isBlock);
+        } else {
+            return compileSimpleIf(condition, body, inverse, signed);
+        }
+    }
+
+
+    private boolean compileMultipleOrIf(Expression condition, Expression body, boolean signed, boolean inverse,
+                                        boolean isBlock) throws SyntaxException {
+        List<Expression> conditionsList = condition.splitByOperator("||");
+        boolean result = true;
+        if (isBlock) {
+            Expression lastBody = new Expression();
+            String bodyEndLabel = body.get(1).asString();
+            String bodyStartLabel = bodyEndLabel + "_body";
+            lastBody.add(new Token(Token.TYPE_KEYWORD, "goto"));
+            lastBody.add(new Token(Token.TYPE_OTHER, bodyStartLabel));
+            for (int i = 0; i < conditionsList.size(); i++) {
+                Expression c = conditionsList.get(i);
+                boolean last = i == conditionsList.size() - 1;
+                Expression thisBody = last ? body : lastBody;
+                if (!compileSimpleIf(c, thisBody, last, signed)) {
                     result = false;
                 }
             }
-            return result;
+            addLabel(bodyStartLabel);
         } else {
-            return compileIf(condition, body, inverse, signed);
+            for (Expression c : conditionsList) {
+                if (!compileSimpleIf(c, body, inverse, signed)) {
+                    result = false;
+                }
+            }
         }
+        return result;
+    }
+
+    private boolean compileMultipleAndIf(Expression condition, Expression body, boolean signed, boolean inverse, boolean isBlock) throws SyntaxException {
+        List<Expression> conditionsList = condition.splitByOperator("&&");
+        boolean result = true;
+        if (isBlock) {
+            for (Expression c : conditionsList) {
+                if (!compileSimpleIf(c, body, inverse, signed)) {
+                    result = false;
+                }
+            }
+        } else {
+            String labelEnd = parser.generateLabelName("if_and_");
+            Expression firstBodies = new Expression();
+            firstBodies.add(new Token(Token.TYPE_KEYWORD, "goto"));
+            firstBodies.add(new Token(Token.TYPE_OTHER, labelEnd));
+
+            for (int i = 0; i < conditionsList.size(); i++) {
+                Expression c = conditionsList.get(i);
+                boolean last = i == conditionsList.size() - 1;
+                Expression thisBody = !last ? firstBodies : body;
+                boolean thisInverse = last == inverse;
+                if (!compileSimpleIf(c, thisBody, thisInverse, signed)) {
+                    result = false;
+                }
+            }
+            addLabel(labelEnd);
+        }
+        return result;
+    }
+
+    private static boolean checkSignedIf(Expression expr) {
+        Token t = expr.getFirst();
+
+        if (t.isSomeString("s")) {
+            expr.removeFirst();
+            return true;
+        } else if (t.isSomeString("u")) {
+            expr.removeFirst();
+            return false;
+        }
+        return false;
     }
 
 

@@ -126,6 +126,8 @@ public class Token {
                 }
                 sb.append("]");
                 return sb.toString();
+            case TYPE_REGISTER_BIT:
+                return new StringBuilder().append(strings[0]).append("[").append(strings[1]).append("]").toString();
         }
         return strings[0];
     }

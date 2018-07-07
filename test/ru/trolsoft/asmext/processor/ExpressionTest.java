@@ -30,18 +30,18 @@ class ExpressionTest {
         assertEquals("r22.r21", e.get(0).toString());
         assertEquals("=", e.get(1).toString());
         assertEquals("r20.r19", e.get(2).toString());
-        assertTrue(e.get(0).getType() == Token.TYPE_REGISTER_GROUP);
-        assertTrue(e.get(1).getType() == Token.TYPE_OPERATOR);
-        assertTrue(e.get(2).getType() == Token.TYPE_REGISTER_GROUP);
+        assertEquals(Token.TYPE_REGISTER_GROUP, e.get(0).getType());
+        assertEquals(Token.TYPE_OPERATOR, e.get(1).getType());
+        assertEquals(Token.TYPE_REGISTER_GROUP, e.get(2).getType());
 
         e = new Expression(l("r1", "+=", "r21"));
         assertEquals(3, e.size());
         assertEquals("r1", e.get(0).toString());
         assertEquals("+=", e.get(1).toString());
         assertEquals("r21", e.get(2).toString());
-        assertTrue(e.get(0).getType() == Token.TYPE_REGISTER);
-        assertTrue(e.get(1).getType() == Token.TYPE_OPERATOR);
-        assertTrue(e.get(2).getType() == Token.TYPE_REGISTER);
+        assertEquals(Token.TYPE_REGISTER, e.get(0).getType());
+        assertEquals(Token.TYPE_OPERATOR, e.get(1).getType());
+        assertEquals(Token.TYPE_REGISTER, e.get(2).getType());
     }
 
     @Test
@@ -254,5 +254,11 @@ class ExpressionTest {
     @Test
     void testOrExpression() {
         e = exp("(r21 == 0 || r21 == 10)");
+    }
+
+    @Test
+    void testRegisterBitToString() {
+        e = exp("r12[3]");
+        assertEquals("r12[3]", e.getFirst().toString());
     }
 }
