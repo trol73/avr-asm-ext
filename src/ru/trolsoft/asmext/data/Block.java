@@ -8,6 +8,7 @@ public class Block {
     public static final int BLOCK_IF = 2;
     public static final int BLOCK_ELSE = 3;
     public static final int BLOCK_BYTES = 4;
+    public static final int BLOCK_DO_WHILE = 5;
 
     public final int type;
     public final int beginLineNumber;
@@ -22,7 +23,7 @@ public class Block {
     }
 
     public Block(int type, Expression expr, int beginLine, String labelStart) {
-        this.type= type;
+        this.type = type;
         this.expr = expr;
         this.beginLineNumber = beginLine;
         this.labelStart = labelStart;

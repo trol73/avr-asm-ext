@@ -22,7 +22,7 @@ public class Parser {
     private int lineNumber;
     private OutputFile output = new OutputFile();
     private final MainCompiler compiler = new MainCompiler(this);
-    private final LoopsCompiler loopsCompiler = new LoopsCompiler(this);
+    private final LoopsCompiler loopsCompiler = new LoopsCompiler(this, compiler);
     public Map<String, Procedure> procedures = new HashMap<>();
     Map<String, Variable> variables = new HashMap<>();
     Map<String, Constant> constants = new HashMap<>();
@@ -106,6 +106,8 @@ public class Parser {
             }
         } else if ("loop".equals(firstToken)) {
             processStartLoop(line);
+        } else if ("do".equals(firstToken)) {
+            processStartDoWhile(line);
         } else if ("if".equals(firstToken) && line.contains("{")) {
             processStartIf(line);
         } else if ("}".equals(firstToken) && line.contains("{") && line.contains("else")) { // TODO
@@ -298,6 +300,10 @@ public class Parser {
         loopsCompiler.compileLoopStart(str, expr);
     }
 
+    private void processStartDoWhile(TokenString str) throws SyntaxException {
+        loopsCompiler.compileDoWhileStart(str, new Expression(str));
+    }
+
     public String generateLabelName(String baseName) {
         return (currentProcedure != null ? currentProcedure.name : "") + "__" + baseName + lineNumber;
     }
@@ -364,13 +370,13 @@ public class Parser {
 
     private void processEndBlock(TokenString line) throws SyntaxException {
         line.removeEmptyTokens();
-        if (line.size() != 1) {
-            error("extra characters in line: " + line.getTokens());
-        }
         if (blocks.isEmpty()) {
             error("open bracket not found: '{'");
         }
         Block lastBlock = blocks.pop();
+        if (line.size() != 1 && lastBlock.type != BLOCK_DO_WHILE) {
+            error("extra characters in line: " + line.getTokens());
+        }
         switch (lastBlock.type) {
             case BLOCK_LOOP:
                 loopsCompiler.compileLoopEnd(line, lastBlock);
@@ -381,6 +387,9 @@ public class Parser {
                 break;
             case BLOCK_BYTES:
                 processEndBytes(lastBlock);
+                break;
+            case BLOCK_DO_WHILE:
+                loopsCompiler.compileDoWhileEnd(line, new Expression(line), lastBlock);
                 break;
         }
     }
@@ -919,7 +928,7 @@ public class Parser {
     public Block getCurrentCycleBlock() throws SyntaxException {
         for (int i = blocks.size()-1; i >= 0; i--) {
             Block block = blocks.get(i);
-            if (block.type == BLOCK_LOOP) {
+            if (block.type == BLOCK_LOOP || block.type == BLOCK_DO_WHILE) {
                 return block;
             }
         }

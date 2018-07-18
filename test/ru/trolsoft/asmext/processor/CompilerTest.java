@@ -7,6 +7,8 @@ import ru.trolsoft.asmext.data.Procedure;
 import ru.trolsoft.asmext.files.OutputFile;
 import ru.trolsoft.asmext.utils.TokenString;
 
+import java.util.Objects;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class CompilerTest {
@@ -38,12 +40,16 @@ class CompilerTest {
     }
 
     private boolean hasCompileError(String src) {
+        return getCompileError(src) != null;
+    }
+
+    private String getCompileError(String src) {
         OutputFile out = new OutputFile();
         try {
             new MainCompiler(new Parser()).compile(new TokenString(src), out);
-            return false;
+            return null;
         } catch (SyntaxException e) {
-            return true;
+            return e.getMessage();
         }
     }
 
@@ -261,13 +267,8 @@ class CompilerTest {
 
     @Test
     void testCallUndefinedProcedureWithArgs() {
-        parser = new Parser(false);
-        try {
-            parser.parseLine("rcall undefined_proc (x1: r10-1, y1: r1+r2)");
-            assertTrue(false);
-        } catch (SyntaxException e) {
-            assertTrue(e.getMessage().contains("undefined procedure: \"undefined_proc\""));
-        }
+        assertTrue(Objects.requireNonNull(getCompileError("rcall undefined_proc (x1: r10-1, y1: r1+r2)")).
+                contains("undefined procedure: \"undefined_proc\""));
     }
 
     @Test
@@ -292,7 +293,6 @@ class CompilerTest {
 
     @Test
     void testBadLoopError() {
-        //assertTrue(hasCompileError("loop i"));
         assertTrue(hasCompileError("loop ( {"));
     }
 

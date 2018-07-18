@@ -11,8 +11,11 @@ import static ru.trolsoft.asmext.compiler.Cmd.*;
 
 public class ExpressionsCompiler extends BaseCompiler {
 
-    public ExpressionsCompiler(Parser parser) {
+    private final MainCompiler mainCompiler;
+
+    public ExpressionsCompiler(Parser parser, MainCompiler mainCompiler) {
         super(parser);
+        this.mainCompiler = mainCompiler;
     }
 
     public boolean compile(TokenString src, Expression expr, OutputFile out) throws SyntaxException {

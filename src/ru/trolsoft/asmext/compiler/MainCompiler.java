@@ -22,7 +22,7 @@ public class MainCompiler extends BaseCompiler {
 
     public MainCompiler(Parser parser) {
         super(parser);
-        this.expressionsCompiler = new ExpressionsCompiler(parser);
+        this.expressionsCompiler = new ExpressionsCompiler(parser, this);
     }
 
 
@@ -185,7 +185,7 @@ public class MainCompiler extends BaseCompiler {
     }
 
 
-    private boolean compileIfNoBlock(Expression expr) throws SyntaxException {
+    boolean compileIfNoBlock(Expression expr) throws SyntaxException {
         return compileIfExpression(expr, false, false);
     }
 
@@ -206,7 +206,7 @@ public class MainCompiler extends BaseCompiler {
             return new AsmInstruction(RJMP, parser.getLastBlock().buildEndLabelToken());
         } else {
             OutputFile tempOut = new OutputFile();
-            if (new ExpressionsCompiler(parser).compile(src, expr, tempOut)) {
+            if (new ExpressionsCompiler(parser, this).compile(src, expr, tempOut)) {
                 if (tempOut.size() != 1) {
                     invalidExpressionError("too big, one command expected");
                 }
@@ -241,7 +241,7 @@ public class MainCompiler extends BaseCompiler {
         } else if (a1.isRegisterBit()) {
             checkExpressionSize(condition, 1);
             compileIfRegisterBitExpression(inverse, a1, instruction.getCommand(), instruction.getArg1Token(), instruction.getArg2Str());
-        } else if (a1.isArrayIo() && a2.isOperator(".")) {
+        } else if (a1.isArrayIo() && a2 != null && a2.isOperator(".")) {
             checkExpressionSize(condition, 3);
             compileIfIoBitExpression(inverse, a1, a3, instruction.getCommand(), instruction.getArg1Token(), instruction.getArg2Str());
         } else if (a1.isRegister() && notEqualCompare && a3.isRegister()) {

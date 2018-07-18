@@ -101,6 +101,30 @@ store (r1) {
 	io[PORTB] = r1
 }
 
+
+proc name(..) _noret {
+}
+proc name(..) _isr {
+}
+proc name(..) _ret {
+}
+proc name(..) _isr(TIMER1_COMPB) _store(r24, r25, SREG) {
+}
+
+
+:[BIT1,BIT2]
+
+r21 -= ([0, 1])
+r21 += ([0, 1])
+r21 &= ([0, 1])
+io[TCCR0] = rmp = ([CS02, CS01, CS00])
+
+do {
+    break
+    continue
+} while (...)
+
+
 .pin keyboard_clk = D[0]
 
 keyboard_clk->DDR = 1
@@ -126,9 +150,6 @@ sts	PCMSK2, r3		; PCMSK2 = 0
 iom[PCMSK2] = r3
 
 
-	if (r21 != KEY_CTRL_R) goto check_code_1
-	r21 = KEY_CTRL_L
-check_code_1:
 
 
 
@@ -171,7 +192,9 @@ if (r2.r1 < ZH.ZL) goto @2 ; ended subtraction
 
 
 
-
+cbr rFlg, (1<<bCyc)|(1<<bOvf)
+rFlg -= [bCyc, bOvf]
+io[TCCR1B] = rmp = mask(WGM12, CS12)
 
 
 .MACRO swap_regs

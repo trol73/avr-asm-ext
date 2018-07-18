@@ -33,7 +33,7 @@ class ParserTest {
         }
 //        System.out.println(o);
 //        System.out.println(o.size() + "  |  " + out.length);
-        assertTrue(o.size() == out.length);
+        assertEquals(out.length, o.size());
         int i = 0;
         for (String s : o) {
             int index = s.indexOf(";");
@@ -47,7 +47,7 @@ class ParserTest {
         }
     }
 
-    boolean parseLineError(String s) {
+    private boolean parseLineError(String s) {
         try {
             parser.parseLine(s);
             return false;
@@ -539,7 +539,7 @@ class ParserTest {
         parser.parseLine(".proc my_proc");
         parser.parseLine(".args x(r23.r24)");
         assertEquals("my_proc", parser.currentProcedure.name);
-        assertTrue(parser.currentProcedure.args.size() == 1);
+        assertEquals(1, parser.currentProcedure.args.size());
 //        assertTrue(parser.currentProcedure.args.containsKey("x"));
 //        assertEquals("r24", parser.currentProcedure.args.get("x").register);
 //        assertEquals("r22", parser.currentProcedure.args.get("y").register);
@@ -550,7 +550,7 @@ class ParserTest {
         parser.parseLine(".proc my_proc_2");
         parser.parseLine(".args val(ZH.ZL.rmp)");
         assertEquals("my_proc_2", parser.currentProcedure.name);
-        assertTrue(parser.currentProcedure.args.size() == 1);
+        assertEquals(1, parser.currentProcedure.args.size());
 //        assertTrue(parser.currentProcedure.args.containsKey("x"));
 //        assertEquals("r24", parser.currentProcedure.args.get("x").register);
 //        assertEquals("r22", parser.currentProcedure.args.get("y").register);
@@ -615,11 +615,8 @@ class ParserTest {
 
     @Test
     void testPrgPtrDeclarationError() {
-        Parser parser = new Parser();
-        try {
-            parser.parseLine(".extern font_5x7 : prg");
-            assertTrue(false);
-        } catch (SyntaxException ignore) {}
+        parser = new Parser();
+        assertTrue(parseLineError(".extern font_5x7 : prg"));
     }
 
     @Test
@@ -677,6 +674,85 @@ class ParserTest {
         assertTrue(parseLineError(".set a ="));
         assertTrue(parseLineError(".set ="));
     }
+
+    @Test
+    void testDoWhile() throws SyntaxException {
+        parser = new Parser();
+        test(a(
+                "do {",
+                "} while (!XL[3])"
+          ), a(
+                "__do_while_1:",
+                "sbrs XL, 3",
+                "rjmp __do_while_1"
+                )
+        );
+    }
+
+    @Test
+    void testBadLoopError() {
+        parser = new Parser();
+        assertTrue(parseLineError("loop i"));
+    }
+
+    @Test
+    void testBadDoWhileError() {
+        parser = new Parser();
+        assertTrue(parseLineError("do"));
+    }
+
+    @Test
+    void testBadDoWhileEndError() {
+        parser = new Parser();
+        assertFalse(parseLineError("do {"));
+        assertTrue(parseLineError("}"));
+
+        parser = new Parser();
+        assertFalse(parseLineError("do {"));
+        assertTrue(parseLineError("} while"));
+
+        parser = new Parser();
+        assertFalse(parseLineError("do {"));
+        assertTrue(parseLineError("} while ()"));
+
+        parser = new Parser();
+        assertFalse(parseLineError("do {"));
+        assertTrue(parseLineError("} while )r11==1("));
+    }
+
+    @Test
+    void testDoWhileBreak() throws SyntaxException {
+        parser = new Parser();
+        test(a(
+                "do {",
+                    "break",
+                "} while (!XL[3])"
+          ), a(
+                "__do_while_1:",
+                "rjmp __do_while_1_end",
+                "sbrs XL, 3",
+                "rjmp __do_while_1",
+                "__do_while_1_end:"
+                )
+        );
+    }
+
+    @Test
+    void testDoWhileContinue() throws SyntaxException {
+        parser = new Parser();
+        test(a(
+                "do {",
+                "continue",
+                "} while (!XL[3])"
+                ), a(
+                "__do_while_1:",
+                "rjmp __do_while_1",
+                "sbrs XL, 3",
+                "rjmp __do_while_1"
+                )
+        );
+    }
+
 
 
 //    @Test

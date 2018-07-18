@@ -4,6 +4,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import ru.trolsoft.asmext.compiler.ExpressionsCompiler;
+import ru.trolsoft.asmext.compiler.MainCompiler;
 import ru.trolsoft.asmext.data.Variable;
 import ru.trolsoft.asmext.files.OutputFile;
 import ru.trolsoft.asmext.utils.TokenString;
@@ -40,7 +41,7 @@ class ExpressionsCompilerTest {
 
     private void test(String s, String outVal) throws SyntaxException {
         Parser parser = new Parser();
-        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser, new MainCompiler(parser));
         OutputFile out = new OutputFile();
 
         TokenString tokenString = new TokenString(s);
@@ -54,7 +55,7 @@ class ExpressionsCompilerTest {
 
     private boolean hasError(String s) {
         Parser parser = new Parser();
-        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser, new MainCompiler(parser));
         try {
             compile(ec, new TokenString(s));
             return false;
@@ -74,7 +75,8 @@ class ExpressionsCompilerTest {
 
     @Test
     void testAssign() throws SyntaxException {
-        ExpressionsCompiler ec = new ExpressionsCompiler(new Parser());
+        Parser parser = new Parser();
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser, new MainCompiler(parser));
 
         test(ec, ta("r21", "  ", "=", "12"), "ldi\tr21, 12");
         test(ec, ta("r21", "  ", "=", "12"), "ldi\tr21, 12");
@@ -123,7 +125,8 @@ class ExpressionsCompilerTest {
 
     @Test
     void testAdd() throws SyntaxException {
-        ExpressionsCompiler ec = new ExpressionsCompiler(new Parser());
+        Parser parser = new Parser();
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser, new MainCompiler(parser));
 
         test(ec, ta("r16", "+=", " ", "10"), "subi\tr16, -10");
         test(ec, ta("r17", "-=", " ", "50"), "subi\tr17, 50");
@@ -144,7 +147,7 @@ class ExpressionsCompilerTest {
     @Test
     void testVars() throws SyntaxException {
         Parser parser = new Parser();
-        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser, new MainCompiler(parser));
 
         parser.variables.put("var_b", new Variable("var_b", Variable.Type.BYTE));
         parser.variables.put("var_w", new Variable("var_w", Variable.Type.WORD));
@@ -182,7 +185,7 @@ class ExpressionsCompilerTest {
     @Test
     void testPairs() throws SyntaxException {
         Parser parser = new Parser();
-        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser, new MainCompiler(parser));
 
         test(ec, ta("r25", ".", "r24", "+=", "10"), "adiw\tr24, 10");
         test(ec, ta("r25", ".", "r24", "-=", "10"), "sbiw\tr24, 10");
@@ -207,7 +210,7 @@ class ExpressionsCompilerTest {
     @Test
     void testPairMem() throws SyntaxException {
         Parser parser = new Parser();
-        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser, new MainCompiler(parser));
 
         parser.parseLine(".extern UART_RxHead : word");
         test(ec, ta("r31", ".", "r30", "=", "UART_RxHead"), "lds\tr31, UART_RxHead+1\nlds\tr30, UART_RxHead");
@@ -234,7 +237,7 @@ class ExpressionsCompilerTest {
     @Test
     void testXYZ() throws SyntaxException {
         Parser parser = new Parser();
-        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser, new MainCompiler(parser));
 
         parser.parseLine(".extern pv : ptr");
         parser.parseLine(".extern ppv : prgptr");
@@ -288,7 +291,7 @@ class ExpressionsCompilerTest {
     @Test
     void testMultipleMove() throws SyntaxException {
         Parser parser = new Parser();
-        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser, new MainCompiler(parser));
 
         parser.parseLine(".extern var_b : byte");
         parser.parseLine(".extern var_w : word");
@@ -322,7 +325,7 @@ class ExpressionsCompilerTest {
     @Test
     void testMovePtrWithOffset() throws SyntaxException {
         Parser parser = new Parser();
-        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser, new MainCompiler(parser));
 
         parser.parseLine(".extern var_ptr : ptr");
         parser.parseLine(".extern var_prg : prgptr");
@@ -334,7 +337,7 @@ class ExpressionsCompilerTest {
     @Test
     void testMoveWordWithAddedPair() throws SyntaxException {
         Parser parser = new Parser();
-        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser, new MainCompiler(parser));
 
         parser.parseLine(".extern var_word : word");
 
@@ -343,9 +346,9 @@ class ExpressionsCompilerTest {
 
     @Test
     void testMultipleMoveError() throws SyntaxException {
-        assertTrue(hasError("=r21=100"));
         Parser parser = new Parser();
-        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser, new MainCompiler(parser));
+        assertTrue(hasError("=r21=100"));
 
         parser.parseLine(".extern var_b : byte");
 
@@ -356,7 +359,7 @@ class ExpressionsCompilerTest {
     @Test
     void testShifts() throws SyntaxException {
         Parser parser = new Parser();
-        ExpressionsCompiler ec = new ExpressionsCompiler(parser);
+        ExpressionsCompiler ec = new ExpressionsCompiler(parser, new MainCompiler(parser));
 
         test(ec, ta("r1", "<<=", "1"), "lsl\tr1");
         test(ec, ta("r10", "<<=", "2"), "lsl\tr10\nlsl\tr10");
